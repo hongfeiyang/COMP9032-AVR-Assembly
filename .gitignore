@@ -1,0 +1,17 @@
+# Ignore Debug folders in any subdirectory
+**/Debug/
+
+# Ignore intermediary files
+*.hex
+*.obj
+*.temp
+*.o
+*.elf
+*.eep
+*.lss
+*.map
+*.sym
+*.eeprom
+
+# Ignore Makefile till we find a solution that works for both windows and macOS
+Makefile
