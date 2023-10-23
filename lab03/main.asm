@@ -2,15 +2,14 @@
 ; lab3.asm
 ;
 ; Created: 15/10/2023 5:46:14 PM
-; Author : Luke
+; Author : Luke et al.
 ;
 
 
 ; The program gets input from keypad and displays its ascii value on LEDs
-; Port F is used for keypad, high 4 bits for column selection, low four bits for reading rows. On the board, RF7-4 connect to C3-0, RF3-0 connect to R3-0.
-; Port D is used to display the ASCII value of a key.
+; Port L is used for keypad, high 4 bits for column selection, low four bits for reading rows. On the board, RF7-4 connect to C3-0, RF3-0 connect to R3-0.
+; Port F is used to display the ASCII value of a key.
 
-;.include "HalfSecondDelay.asm"
 .include "m2560def.inc"
 
 .def aa=r3
@@ -28,7 +27,7 @@
 
 
 
-.equ PORTFDIR =0xF0			; use PortD for input/output from keypad: PF7-4, output, PF3-0, input
+.equ PORTLDIR =0xF0			; use PortL for input/output from keypad: PL7-4, output, PL3-0, input
 .equ INITCOLMASK = 0xEF		; scan from the leftmost column, the value to mask output
 .equ INITROWMASK = 0x01		; scan from the bottom row
 .equ ROWMASK  =0x0F			; low four bits are output from the keypad. This value mask the high 4 bits.
@@ -77,7 +76,7 @@
 		dec temp1
 		brne delay
 
-		lds	temp1, PINL				; read PORTD
+		lds	temp1, PINL				; read PORTL
 		andi temp1, ROWMASK
 		cpi temp1, 0xF				; check if any rows are on
 		breq nextcol
@@ -88,7 +87,7 @@
 		cpi row, 4
 		breq nextcol
 		mov temp2, temp1
-		and temp2, rmask				; check masked bit
+		and temp2, rmask			; check masked bit
 		breq convert 				; if bit is clear, convert the bitcode
 		inc row						; else move to the next row
 		lsl rmask					; shift the mask to the next bit
@@ -146,8 +145,7 @@
 ;---------------------------------------------------------------------------------------
 ;start of program
 RESET:
-;jmp test
-	ldi temp1, PORTFDIR			; columns are outputs, rows are inputs
+	ldi temp1, PORTLDIR			; columns are outputs, rows are inputs
 	sts	DDRL, temp1				;keypad
 	ser temp1					;PORTC is LED
 	out DDRC, temp1				;set PORTC to output
@@ -246,10 +244,10 @@ print_hex:
 wait_loop:
 	clr temp1
 	key_input
-	rcall sleep_200ms			; delay 100ms	
+	rcall sleep_200ms			; delay 200ms	
 	cpi temp1, 'C'              ; If 'C' was inputted...
 	brne wait_loop
-	cpi temp3, 0				; 0 means we are currently showing decimal
+	cpi temp3, 0				; 0 means we are currently showing decimal, otherwise we are showing hex
 	breq print_hex
 	rjmp print_dec
 
