@@ -12,6 +12,7 @@
 
 ;.include "HalfSecondDelay.asm"
 .include "m2560def.inc"
+
 .def aa=r3
 .def bb=r4
 .def xx=r5
@@ -23,7 +24,8 @@
 .def temp2=r22
 .def ten=r23
 .def yy=r24
-.def zero_=r25
+.def temp3=r25
+
 
 
 .equ PORTFDIR =0xF0			; use PortD for input/output from keypad: PF7-4, output, PF3-0, input
@@ -219,82 +221,222 @@ get_b:
 ;calculate result
 calc:
 	mul aa,xx		; calculate a*x
-	ldi zero_,0
-	cp r1,zero_
+	tst r1
 	brne overflow	; branch if overflow
 	mov temp1, r0   ; store a*x in temp1
 	sub r0,bb		; subtract b
 	mov yy,r0		; move to y register
 	cp temp1, bb
-	brlo convert	; if a*x < b, then y is negative, go to convert
-	sbrs yy, 7		; if y is positve and bit 7 is set then overflow
-	rjmp convert
-	rjmp overflow
+	brlo print_dec	; if a*x < b, then y is negative, go to convert
+	sbrs yy, 7				; if y is positve and bit 7 is set then overflow
+	rjmp print_dec
 
 ;On overflow, LED flashes 3 times and returns to the start
 overflow:
-	ser r16
-	out PORTC,r16
-	rcall sleep_50ms
-	clr r16
-	out PORTC,r16
-	rcall sleep_50ms
-	ser r16
-	out PORTC,r16
-	rcall sleep_50ms
-	clr r16
-	out PORTC,r16
-	rcall sleep_50ms
-	ser r16
-	out PORTC,r16
-	rcall sleep_50ms
-	clr r16
-	out PORTC,r16
+	rcall flash_three_times
 	rjmp RESET
 
-; convert to ASCII decimal
-convert:		    
+print_dec:
+	rcall display_decimal
+	ldi temp3, 0
+	rjmp wait_loop
+print_hex:
+	rcall convert_to_hex_and_display
+	ldi temp3, 1
+wait_loop:
+	clr temp1
+	key_input
+	rcall sleep_200ms			; delay 100ms	
+	cpi temp1, 'C'              ; If 'C' was inputted...
+	brne wait_loop
+	cpi temp3, 0				; 0 means we are currently showing decimal
+	breq print_hex
+	rjmp print_dec
+
+flash_three_times:
+	push YL
+	push YH
+	push r16
+	in YL, SPL
+	in YH, SPH
+	sbiw YH:YL, 5
+	out SPH, YH
+	out SPL, YL
+
+	ser r16
+	out PORTC,r16
+	rcall sleep_50ms
+	clr r16
+	out PORTC,r16
+	rcall sleep_50ms
+	ser r16
+	out PORTC,r16
+	rcall sleep_50ms
+	clr r16
+	out PORTC,r16
+	rcall sleep_50ms
+	ser r16
+	out PORTC,r16
+	rcall sleep_50ms
+	clr r16
+	out PORTC,r16
+
+	adiw YH:YL, 5
+	out SPH, YH
+	out SPL, YL
+	pop r16
+	pop YH
+	pop YL
+	ret
+
+
+
+display_decimal:
+	push YL
+	push YH
+	push yy
+	push temp1
+	push temp2
+	in YL, SPL
+	in YH, SPH
+	sbiw YH:YL, 7
+	out SPH, YH
+	out SPL, YL
+
+	
 	do_lcd_command 0b00000001 ; clear display
 	do_lcd_command 0b00001110
 	sbrs yy, 7       
 	rjmp positive
-	negative:
-		com yy			; two's complement
-		inc yy
-		ldi temp1, '-'
-		do_lcd_data temp1
+negative:
+	com yy			; two's complement
+	inc yy
+	ldi temp1, '-'
+	do_lcd_data temp1
 
-	positive:
-		cp yy, ten
-		brlo display_one_digit
-		ldi ten, 10
-		clr temp1		; make temp1 #-10      (e.g. 123 -> temp1=12, yy=3)
-	loop_pos:
-		cp yy, ten      ; if yy is less than 10 go to output
-		brlo output
-		inc temp1       ; else temp1 += 1
-		sub yy, ten     ; yy -= 10
-		rjmp loop_pos
+positive:
+	cp yy, ten
+	brlo display_one_digit
+	ldi ten, 10
+	clr temp1		; make temp1 #-10      (e.g. 123 -> temp1=12, yy=3)
+loop_pos:
+	cp yy, ten      ; if yy is less than 10 go to output
+	brlo output
+	inc temp1       ; else temp1 += 1
+	sub yy, ten     ; yy -= 10
+	rjmp loop_pos
 
-	output:
-		cp temp1, ten   ; if #times -10 is less than 10, which means result is 1/2 digit, go to display
-		brlo display         
-		ldi temp2, '1'  ; else result is 3-digit
-		do_lcd_data temp2    
-		sub temp1, ten
+output:
+	cp temp1, ten   ; if #times -10 is less than 10, which means result is 1/2 digit, go to display
+	brlo display         
+	ldi temp2, '1'  ; else result is 3-digit
+	do_lcd_data temp2    
+	sub temp1, ten
 
-	display:
-		subi temp1, -'0'
-		do_lcd_data temp1
+display:
+	subi temp1, -'0'
+	do_lcd_data temp1
 
-	display_one_digit:
-		subi yy, -'0'
-		do_lcd_data yy
-		rjmp halt
+display_one_digit:
+	subi yy, -'0'
+	do_lcd_data yy
 
 
-fin:
-	rjmp fin
+	adiw YH:YL, 7
+	out SPH, YH
+	out SPL, YL
+	pop temp2
+	pop temp1
+	pop yy
+	pop YH
+	pop YL
+	ret
+
+
+
+
+; Function Name: convert_to_hex_and_display
+; Symposis:
+; 	Converts an 8 - bit signed binary number located in the yy register to its ASCII hexadecimal representation and displays it on an LCD.
+; 	The displayed output will be in the format of either a two - character hexadecimal or - 0xXX for negative numbers.
+
+; Inputs:
+; 	yy: Contains the 8 - bit signed binary number that you want to convert.
+; Outputs:
+; 	LCD Display: The LCD will display the ASCII hexadecimal representation of the input number. Negative numbers will be prefixed with - 0x.
+; Registers Used:
+; 	yy: Holds the input number and is used as a temporary register during the conversion process.
+; 	r17: Acts as a counter to keep track of the number of hex digits that have been converted.
+;	r18: Saves the value of yy.
+; 	YL and YH: Serve as the frame pointer for local stack operations.
+convert_to_hex_and_display:
+	
+	push YL
+	push YH
+	push yy
+	push r17
+	push r18
+	in YL, SPL
+	in YH, SPH
+	sbiw YH:YL, 7
+	out SPH, YH
+	out SPL, YL
+	
+	; assume binary is in yy
+
+	do_lcd_command 0b00000001 	; clear display
+	do_lcd_command 0b00001110
+	
+	; check sign
+	ldi r17, 0                  ; r17 stores how many hex digit we have converted
+	mov r18, yy				 	; r18 stores the absolute value of the original number 
+	sbrs yy, 7                  ; check MSB for negative number
+	rjmp display_0x
+neg_number:
+	neg yy                      ; convert to positive to print
+	
+	mov r18, yy               	; overwrite r18 with the absolute value of the original number
+	
+	ldi yy, '-'                 ; print '-' on LCD
+	do_lcd_data yy
+
+display_0x:
+
+	ldi yy, '0'
+	do_lcd_data yy
+	ldi yy, 'x'
+	do_lcd_data yy
+	mov yy, r18              	; restore yy to the original number we first stored to do hex conversion
+	
+convert_to_ascii_loop:
+	swap yy                     ; Convert the highest 4 bit first, swap them to the lower 4 bit for convinence
+	andi yy, 0b00001111         ; Keep the 4 bit we are interested in only
+	cpi yy, 10                  ; if this digit is larger than 10, we need to represent it with a letter
+	brlt convert_to_ascii_number
+	subi yy, - ('A' - 10)       ; convert yy to a ASCII letter, first minus yy by 10 to get how much it exceeds 10, then displace it by the ASCII value of 'A'
+	rjmp display_to_lcd
+convert_to_ascii_number:
+	subi yy, - ('0')            ; convert yy to a ASCII number, displace it by the ASCII value of '0'
+display_to_lcd:
+	do_lcd_data yy              ; display the converted digit on LCD
+	inc r17                      ; we now have converted one digit, we then prepare the lower 4 bit for conversion
+	mov yy, r18               	; restore yy
+	swap yy                     ; swap now so that the lower 4 bit will be correctly placed at the lower 4 bit later when convert_to_ascii_loop is jumped to again
+	cpi r17, 2
+	brne convert_to_ascii_loop
+	
+	
+	adiw YH:YL, 7
+	out SPH, YH
+	out SPL, YL
+	pop r18
+	pop r17
+	pop yy
+	pop YH
+	pop YL
+	ret
+	
+
 
 halt:
 	rjmp halt
@@ -344,7 +486,7 @@ lcd_wait_loop:
 	lcd_set LCD_E
 	nop
 	nop
-        nop
+    nop
 	in r16, PINF
 	lcd_clr LCD_E
 	sbrc r16, 7
@@ -392,4 +534,9 @@ sleep_50ms:
 	rcall sleep_5ms
 	ret
 
-
+sleep_200ms:
+	rcall sleep_50ms
+	rcall sleep_50ms
+	rcall sleep_50ms
+	rcall sleep_50ms
+	ret
