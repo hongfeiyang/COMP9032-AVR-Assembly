@@ -51,72 +51,83 @@
 	do_lcd_command 0b00001110 ; Cursor on, bar, no blink
 
 main:
-    ldi r16, 243
+    ldi r16, 5
     rcall display_decimal
 end:
     rjmp end
 
 
-; Display data stored in 
-display_decimal:
 
-	do_lcd_command 0b00000001 ; clear display
-	do_lcd_command 0b00001110
+; Display data stored in r16
+display_decimal:
     
-    .def TEMP = r20
+    .def double_dabble_temp = r20
 
 	push r16
     push r19
-    push r20
+    push double_dabble_temp
     push r24
     push r25
 
-
     ; Using the double dabble algorithm
     ; https://en.wikipedia.org/wiki/Double_dabble
+    ; Convert to packed BCD format
+	; For example, 5 becomes 0101, 10 becomes 0001 0000
 
-    ; Convert to BCD
     clr r24
     clr r25
-    ldi r19, 8
+    ldi r19, 8		; number of iterations, since we have 8 bits to convert
 
 double_dabble_loop:
     lsl r16
     rol r24
     rol r25
 
-    mov TEMP, r24
-    andi TEMP, 0b00001111
-    cpi TEMP, 5
-    brlo skip_add
-    subi r24, -3
-skip_add:
     dec r19
     tst r19
-    brne double_dabble_loop
+    breq end_double_dabble
 
-    ; Display 
+check_ones:
+    mov double_dabble_temp, r24
+    andi double_dabble_temp, 0b00001111
+    cpi double_dabble_temp, 5
+    brlo check_tens
+    subi r24, -3
+check_tens:
+	mov double_dabble_temp, r24
+	swap double_dabble_temp
+	andi double_dabble_temp, 0b00001111
+	cpi double_dabble_temp, 5
+	brlo double_dabble_loop
+	subi r24, -3<<4
+	rjmp double_dabble_loop
+end_double_dabble:
 
+	; Display the BCD
+
+	; Display the hundreds
     andi r25, 0b00001111
     subi r25, -'0'
     do_lcd_data r25
 
-    mov TEMP, r24
-    swap TEMP
-    andi TEMP, 0b00001111
-    subi TEMP, -'0'
-    do_lcd_data TEMP
+	; Display the tens
+    mov double_dabble_temp, r24
+    swap double_dabble_temp
+    andi double_dabble_temp, 0b00001111
+    subi double_dabble_temp, -'0'
+    do_lcd_data double_dabble_temp
 
+	; Display the ones
     andi r24, 0b00001111
     subi r24, -'0'
     do_lcd_data r24
 
     pop r25
 	pop r24
-    pop r20
+    pop double_dabble_temp
     pop r19
 	pop r16
-    .undef TEMP
+    .undef double_dabble_temp
 	ret
 
 ;funcions
