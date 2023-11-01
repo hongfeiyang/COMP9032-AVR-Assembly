@@ -1,74 +1,76 @@
-	.include "m2560def.inc"
-	
-    .equ LCD_RS         =   7
-    .equ LCD_E          =   6
-    .equ LCD_RW         =   5
-    .equ LCD_BE         =   4
-	.equ PATTERN        =   0b11110000
-	.def temp0          =   r18
-    .def temp1          =   r19
-	.def leds           =   r20
-    .def ten            =   r21
-    
+.include "m2560def.inc"
+
+.equ LCD_RS         =   7
+.equ LCD_E          =   6
+.equ LCD_RW         =   5
+.equ LCD_BE         =   4
+.equ PORTD_PIN_TDX2 =   2
+.equ PATTERN        =   0b11110000
+.def temp          =   	r16
+.def leds           =   r20
 
 
-    .macro Clear
-        ldi YL, low(@0)              ; load the memory address to Y
-        ldi YH, high(@0)
-        clr temp1
-        st Y+ , temp1                ; clear the two bytes at @0 in SRAM
-        st Y, temp1
-	.endmacro
-	
-    .macro lcd_set
-        sbi PORTA, @0
-    .endmacro
 
-    .macro lcd_clr
-        cbi PORTA, @0
-    .endmacro
+.macro Clear
+	ldi YL, low(@0)              ; load the memory address to Y
+	ldi YH, high(@0)
+	clr temp
+	st Y+ , temp                ; clear the two bytes at @0 in SRAM
+	st Y, temp
+.endmacro
 
-    .macro do_lcd_command
-        ldi r16, @0
-        rcall lcd_command
-        rcall lcd_wait
-    .endmacro
+.macro lcd_set
+	sbi PORTA, @0
+.endmacro
 
-    .macro do_lcd_data
-		push r16
-        mov r16, @0
-        rcall lcd_data
-        rcall lcd_wait
-		pop r16
-    .endmacro
+.macro lcd_clr
+	cbi PORTA, @0
+.endmacro
 
-	.macro clear_lcd
-		do_lcd_command 0b00000001 	; clear display
-		do_lcd_command 0b00001110
-	.endmacro
+.macro do_lcd_command
+	ldi r16, @0
+	rcall lcd_command
+	rcall lcd_wait
+.endmacro
 
-	.dseg
-SecondCounter:  .byte 2                      ; Two - byte counter for counting the number of seconds.
-TempCounter:    .byte 2
+.macro do_lcd_data
+	push r16
+	mov r16, @0
+	rcall lcd_data
+	rcall lcd_wait
+	pop r16
+.endmacro
 
-	.cseg
-	.org 0x0000
+.macro clear_lcd
+	do_lcd_command 0b00000001 	; clear display
+	do_lcd_command 0b00001110
+.endmacro
+
+.dseg
+SecondCounter:  	.byte 2                     ; Two - byte counter for counting the number of seconds.
+TempCounter:    	.byte 2
+RotationCounter: 	.byte 2						; Two - byte counter for counting the number of rotations.
+
+.cseg
+.org 0x0000
 	jmp RESET
-	.org OVF0addr
+.org INT2addr
+	jmp EXT_INT2
+.org OVF0addr
 	jmp Timer0OVF               ; Jump to the interrupt handler for Timer0 overflow.
+
 	
-DEFAULT: reti
 RESET:
-	ser temp1                    ; set Port C as output
-	out DDRC, temp1
+	ser r16                    ; set Port C as output
+	out DDRC, r16
 	rjmp main
 	
 Timer0OVF:                      ; interrupt subroutine for Timer0
-    in temp1, SREG
-	push temp1                   ; Prologue starts.
-	push Yh                     ; Save all conflict registers in the prologue.
+	push r16
+    in r16, SREG
+	push r16                   ; Prologue starts.
+	push YH                     ; Save all conflict registers in the prologue.
 	push YL
-    push r16
 	push r25
 	push r24                    ; Prologue ends.
 
@@ -82,17 +84,34 @@ Timer0OVF:                      ; interrupt subroutine for Timer0
 	brne NotSecond
 	cpi r25, high(1000)
 	brne NotSecond
-	com leds
-	out PORTC, leds
+	
+	; Now read the number of rotations and display it on the LCD
+
+	ldi YL, low(RotationCounter)
+	ldi YH, high(RotationCounter)
+	ld r24, Y+
+	ld r25, Y
+
+	; Divide number of rotations by 4 since we have 4 holes on the disk
+	lsr r25
+	ror r24
+	lsr r25
+	ror r24
+
+	
+	; TODO(hongfei): 	the number of rotations, most likely, will be larger than 255
+	; 					therefore we need to display the value of r25 together with r24 on screen as well
+	; 					the current function display_decimal only displays the value of r24, need to expand its capability
+	mov r16, r24
+	rcall display_decimal
+	Clear RotationCounter       ; Reset the rotation counter.
+
 	Clear TempCounter           ; Reset the temporary counter.
 	ldi YL, low(SecondCounter)  ; Load the address of the second
 	ldi YH, high(SecondCounter) ; counter.
 	ld r24, Y +                 ; Load the value of the second counter.
 	ld r25, Y
     adiw r25:r24, 1             ; Increase the second counter by one.
-
-    mov r16, r24
-    rcall display_decimal
 
 	st Y, r25                   ; Store the value of the second counter.
 	st - Y, r24
@@ -103,13 +122,49 @@ NotSecond:
 endif:
 	pop r24                      ; Epilogue starts;
 	pop r25                      ; Restore all conflict registers from the stack.
-    pop r16
 	pop YL
 	pop YH
-	pop temp1
-	out SREG, temp1
+	pop r16
+	out SREG, r16
+	pop r16                    ; Epilogue ends.
 	reti
+
+
+EXT_INT2:
+	push r16
+	in r16, SREG
+	push r16
+	push YH
+	push YL
+	push r25
+	push r24
+
+	ldi YL, low(RotationCounter)
+	ldi YH, high(RotationCounter)
+	ld r24, Y+
+	ld r25, Y
+
+	adiw r25:r24, 1			; Increase the rotation counter by one
+
+	st Y, r25
+	st - Y, r24
+
 	
+	; Uncomment to show the 'LED not flashing when disk is rotating' problem
+	; 	perhaps the waves are not stable at all and we got constant falling edges?
+	; com leds
+	; out PORTC, leds
+
+	pop r24
+	pop r25
+	pop YL
+	pop YH
+	pop r16
+	out SREG, r16
+	pop r16
+	reti
+
+
 	
 main:
 	ldi r16, low(RAMEND)
@@ -117,7 +172,6 @@ main:
 	ldi r16, high(RAMEND)
 	out SPH, r16
 
-    ldi ten, 10
 
     ; LCD set up and initialization
 	ser r16
@@ -138,30 +192,51 @@ main:
 	do_lcd_command 0b00000110 ; increment, no display shift
 	do_lcd_command 0b00001110 ; Cursor on, bar, no blink
 
-	ldi leds, 0xff               ; Init pattern displayed
-	out PORTC, leds
-	ldi leds, PATTERN
-	Clear TempCounter            ; Initialize the temporary counter to 0
-	Clear SecondCounter          ; Initialize the second counter to 0
-	ldi temp1, 0b00000000
-	out TCCR0A, temp1
-	ldi temp1, 0b00000011
-	out TCCR0B, temp1             ; Prescaler value=64, counting 1024 us
-	ldi temp1, 1<<TOIE0
-	sts TIMSK0, temp1             ; T / C0 interrupt enable
-	sei                          ; Enable global interrupt
+	; ldi leds, 0xff            ; Init pattern displayed
+	; out PORTC, leds
+	; ldi leds, PATTERN
+	Clear TempCounter         ; Initialize the temporary counter to 0
+	Clear SecondCounter       ; Initialize the second counter to 0
+	Clear RotationCounter     ; Initialize the rotation counter to 0
+
+	ldi temp, 0b00000000
+	out TCCR0A, temp
+	ldi temp, 0b00000011
+	out TCCR0B, temp          	; Prescaler value=64, counting 1024 us
+	ldi temp, 1<<TOIE0
+	sts TIMSK0, temp           	; T / C0 interrupt enable
+
+	ldi temp, 0 << PORTD_PIN_TDX2
+	out DDRD, temp          	; Set PD2 bit 2 as input
+	ldi temp, 1 << PORTD_PIN_TDX2
+	out PORTD, temp           	; Initially PD2 bit 2 is set to high (means no light detected)
+
+	ldi temp, (2 << CS20)
+	sts EICRA, temp            	; INT2 falling edge, Since INT2 is connected to OpO pin, and OpO will go low when the detector can see the light
+
+	in temp, EIMSK
+	ori temp, 1 << INT2		
+	out EIMSK, temp            	; INT2 interrupt enable
+
+	sei							; Enable global interrupt
 
 loop:
-	rjmp loop                    ; loop forever
+	rjmp loop                   ; loop forever
 
 
 
-; Display data stored in r16
+
+; TODO(hongfei): 	the number of rotations, most likely, will be larger than 255
+; 					therefore we need to display the value of r25 together with r24 on screen as well
+; 					the current function display_decimal only displays the value of r24, need to expand its capability
+; Binary number to display stored in r16
 display_decimal:
- 
+	push r18
+	in r18, SREG
+	push r18
 	push r16 				; hold binary number to be converted and displayed
     push r19 				; hold number of iterations
-    push r17 ; hold temporary value
+    push r17 				; hold temporary value
     push r24				; hold lower two digits of 8 bit BCD formatted number
     push r25 				; hold upper two digits of 8 bit BCD formatted number (8 bits can only have 1 upper digit)
 
@@ -225,6 +300,9 @@ end_double_dabble:
     pop r17
     pop r19
 	pop r16
+	pop r18
+	out SREG, r18
+	pop r18
 	ret
 
 

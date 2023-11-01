@@ -5,6 +5,7 @@
     .equ LCD_E          =   6
     .equ LCD_RW         =   5
     .equ LCD_BE         =   4
+	.equ PIN_TDX2     	=   2
 
     .macro lcd_set
         sbi PORTA, @0
@@ -51,8 +52,16 @@
 	do_lcd_command 0b00001110 ; Cursor on, bar, no blink
 
 main:
-    ldi r16, 5
-    rcall display_decimal
+	ldi r16, 0<<PIN_TDX2
+	out DDRD, r16
+
+	ser r16
+	out DDRC, r16
+	
+	in r16, PIND
+	out PORTC, r16
+
+	rjmp main
 end:
     rjmp end
 
@@ -61,11 +70,9 @@ end:
 ; Display data stored in r16
 display_decimal:
     
-    .def double_dabble_temp = r20
-
 	push r16 				; hold binary number to be converted and displayed
     push r19 				; hold number of iterations
-    push double_dabble_temp ; hold temporary value
+    push r17 ; hold temporary value
     push r24				; hold lower two digits of 8 bit BCD formatted number
     push r25 				; hold upper two digits of 8 bit BCD formatted number (8 bits can only have 1 upper digit)
 
@@ -88,16 +95,16 @@ double_dabble_loop:
     breq end_double_dabble
 
 check_ones:
-    mov double_dabble_temp, r24
-    andi double_dabble_temp, 0b00001111
-    cpi double_dabble_temp, 5
+    mov r17, r24
+    andi r17, 0b00001111
+    cpi r17, 5
     brlo check_tens
     subi r24, -3
 check_tens:
-	mov double_dabble_temp, r24
-	swap double_dabble_temp
-	andi double_dabble_temp, 0b00001111
-	cpi double_dabble_temp, 5
+	mov r17, r24
+	swap r17
+	andi r17, 0b00001111
+	cpi r17, 5
 	brlo double_dabble_loop
 	subi r24, -3<<4
 	rjmp double_dabble_loop
@@ -111,11 +118,11 @@ end_double_dabble:
     do_lcd_data r25
 
 	; Display the tens
-    mov double_dabble_temp, r24
-    swap double_dabble_temp
-    andi double_dabble_temp, 0b00001111
-    subi double_dabble_temp, -'0'
-    do_lcd_data double_dabble_temp
+    mov r17, r24
+    swap r17
+    andi r17, 0b00001111
+    subi r17, -'0'
+    do_lcd_data r17
 
 	; Display the ones
     andi r24, 0b00001111
@@ -124,10 +131,9 @@ end_double_dabble:
 
     pop r25
 	pop r24
-    pop double_dabble_temp
+    pop r17
     pop r19
 	pop r16
-    .undef double_dabble_temp
 	ret
 
 ;funcions
