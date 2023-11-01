@@ -1,0 +1,19 @@
+PORT=COM3
+AVRDUDE_CONF_PATH = "C:\Program Files (x86)\Arduino\hardware\tools\avr\etc\avrdude.conf"
+MCU=m2560
+AS="C:\Program Files (x86)\Atmel\Studio\7.0\toolchain\avr8\avrassembler\avrasm2.exe"
+INCLUDE_PATH = "C:\Program Files (x86)\Atmel\Studio\7.0\packs\atmel\ATmega_DFP\1.7.374\avrasm\inc"
+AVRDUDE = "C:\Program Files (x86)\Arduino\hardware\tools\avr\bin\avrdude.exe"
+TARGET=main
+HEX_FILES=$(TARGET).hex
+
+all: $(HEX_FILES)
+
+clean:
+	del /Q *.o *.hex *.obj *.elf *.cof *.eep.hex *.map
+
+%.hex: %.asm
+	$(AS) -fI -I $(INCLUDE_PATH) $<
+
+program: $(HEX_FILES)
+	$(AVRDUDE) -C $(AVRDUDE_CONF_PATH) -c wiring -p $(MCU) -P $(PORT) -U flash:w:$(TARGET).hex:i -D
