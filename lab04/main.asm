@@ -9,7 +9,7 @@
 .equ LCD_BE         =   4
 .equ PORTD_PIN_TDX2 =   2
 .equ PATTERN        =   0b11110000
-.def temp          =   	r16
+.def temp         	=   r16
 
 
 ; --------------------------------------------------------------------------------------------------------------- ;
@@ -162,11 +162,6 @@ EXT_INT2:
 	st Y, r25
 	st - Y, r24
 
-wait_for_rising:				; make sure rising edge detected before continuing to prevent multiple increments on the same hole 
-	in r24,PIND
-	sbrs r24, PORTD_PIN_TDX2
-	rjmp wait_for_rising
-
 	pop r24
 	pop r25
 	pop YL
@@ -226,7 +221,7 @@ main:
 	ldi temp, 1 << PORTD_PIN_TDX2
 	out PORTD, temp           	; Initially PD2 bit 2 is set to high (means no light detected)
 
-	ldi temp, (2 << CS20)		; EICRA is control register specifying falling edge 
+	ldi temp, (2 << ISC20)		; EICRA is control register specifying falling edge 
 	sts EICRA, temp            	; INT2 falling edge, Since INT2 is connected to OpO pin, and OpO will go low when the detector can see the light
 
 	in temp, EIMSK				; EIMSK is mask register to activate INT2
