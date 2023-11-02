@@ -61,7 +61,7 @@ RotationCounter: 	.byte 2						; Two - byte counter for counting the number of r
 
 	
 RESET:
-	ser r16                    ; set Port C as output
+	ser r16                    ; set Port C as output (port C set as OpE light emitter)
 	out DDRC, r16
 	rjmp main
 	
@@ -138,6 +138,7 @@ EXT_INT2:
 	push YL
 	push r25
 	push r24
+	push r23
 
 	ldi YL, low(RotationCounter)
 	ldi YH, high(RotationCounter)
@@ -149,12 +150,17 @@ EXT_INT2:
 	st Y, r25
 	st - Y, r24
 
+wait_for_rising:			;make sure rising edge detected before continuing to prevent multiple increments on the same hole 
+	in r23,PIND
+	sbrs r23,2
+	rjmp wait_for_rising
+
 	
 	; Uncomment to show the 'LED not flashing when disk is rotating' problem
 	; 	perhaps the waves are not stable at all and we got constant falling edges?
 	; com leds
 	; out PORTC, leds
-
+	pop r23
 	pop r24
 	pop r25
 	pop YL
@@ -192,9 +198,11 @@ main:
 	do_lcd_command 0b00000110 ; increment, no display shift
 	do_lcd_command 0b00001110 ; Cursor on, bar, no blink
 
-	; ldi leds, 0xff            ; Init pattern displayed
-	; out PORTC, leds
-	; ldi leds, PATTERN
+
+
+	ldi leds, 0xff            ; Init pattern displayed
+	out PORTC, leds
+	ldi leds, PATTERN
 	Clear TempCounter         ; Initialize the temporary counter to 0
 	Clear SecondCounter       ; Initialize the second counter to 0
 	Clear RotationCounter     ; Initialize the rotation counter to 0
@@ -211,15 +219,14 @@ main:
 	ldi temp, 1 << PORTD_PIN_TDX2
 	out PORTD, temp           	; Initially PD2 bit 2 is set to high (means no light detected)
 
-	ldi temp, (2 << CS20)
+	ldi temp, (2 << CS20)		; EICRA is control register specifying falling edge 
 	sts EICRA, temp            	; INT2 falling edge, Since INT2 is connected to OpO pin, and OpO will go low when the detector can see the light
 
-	in temp, EIMSK
+	in temp, EIMSK				;EIMSK is mask register to activate INT2
 	ori temp, 1 << INT2		
 	out EIMSK, temp            	; INT2 interrupt enable
 
 	sei							; Enable global interrupt
-
 loop:
 	rjmp loop                   ; loop forever
 
@@ -305,9 +312,7 @@ end_double_dabble:
 	pop r18
 	ret
 
-
-
-;funcions
+; funcions
 lcd_command:
 	out PORTF, r16
 	nop
