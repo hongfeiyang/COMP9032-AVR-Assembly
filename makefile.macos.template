@@ -1,0 +1,17 @@
+PORT=/dev/cu.usbmodem11401 # list all ports with ls -l /dev/cu.*
+# AVRDUDE_CONF_PATH = /Users/hongfeiyang/Library/Arduino15/packages/arduino/tools/avrdude/6.3.0-arduino17/etc/avrdude.conf
+MCU=m2560
+AS=avra
+TARGET=main
+HEX_FILES=$(TARGET).hex
+
+all: $(HEX_FILES)
+
+clean:
+	rm -f *.o *.hex *.obj *.elf *.cof *.eep.hex *.map
+
+%.hex: %.asm
+	$(AS) $<
+
+program: $(TARGET).hex
+	avrdude -p $(MCU) -c wiring -P $(PORT) -U flash:w:$(TARGET).hex:i -D
