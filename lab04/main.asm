@@ -1,5 +1,8 @@
 .include "m2560def.inc"
 
+; --------------------------------------------------------------------------------------------------------------- ;
+; ------------------------------------------------------- Constants and definitions ----------------------------- ;
+; --------------------------------------------------------------------------------------------------------------- ;
 .equ LCD_RS         =   7
 .equ LCD_E          =   6
 .equ LCD_RW         =   5
@@ -7,10 +10,11 @@
 .equ PORTD_PIN_TDX2 =   2
 .equ PATTERN        =   0b11110000
 .def temp          =   	r16
-.def leds           =   r20
 
 
-
+; --------------------------------------------------------------------------------------------------------------- ;
+; ------------------------------------------------------- Macros ------------------------------------------------ ;
+; --------------------------------------------------------------------------------------------------------------- ;
 .macro Clear
 	ldi YL, low(@0)              ; load the memory address to Y
 	ldi YH, high(@0)
@@ -46,11 +50,18 @@
 	do_lcd_command 0b00001110
 .endmacro
 
+; --------------------------------------------------------------------------------------------------------------- ;
+; ------------------------------------------------------- Variables --------------------------------------------- ;
+; --------------------------------------------------------------------------------------------------------------- ;
 .dseg
-SecondCounter:  	.byte 2                     ; Two - byte counter for counting the number of seconds.
-TempCounter:    	.byte 2
+SecondCounter:  	.byte 2                     ; Two - byte counter for counting the number of seconds. Consider this as a clock that counts the number of seconds has elapsed.
+TempCounter:    	.byte 2						; Two - byte counter for counting the number of intervals of 1024 us. Will reset to 0 after 1000 intervals.
 RotationCounter: 	.byte 2						; Two - byte counter for counting the number of rotations.
 
+
+; --------------------------------------------------------------------------------------------------------------- ;
+; ------------------------------------------------------- Interrupt Vectors ------------------------------------- ;
+; --------------------------------------------------------------------------------------------------------------- ;
 .cseg
 .org 0x0000
 	jmp RESET
@@ -59,16 +70,19 @@ RotationCounter: 	.byte 2						; Two - byte counter for counting the number of r
 .org OVF0addr
 	jmp Timer0OVF               ; Jump to the interrupt handler for Timer0 overflow.
 
-	
+; --------------------------------------------------------------------------------------------------------------- ;
+; ------------------------------------------------------- Interrupt Handlers ------------------------------------ ;
+; --------------------------------------------------------------------------------------------------------------- ;
 RESET:
-	ser r16                    ; set Port C as output (port C set as OpE light emitter)
-	out DDRC, r16
 	rjmp main
-	
+
+; --------------------------------------------------------------------------------------------------------------- ;
+; ------------------------------------------------------- Timer0 Overflow Handler ------------------------------- ;
+; --------------------------------------------------------------------------------------------------------------- ;
 Timer0OVF:                      ; interrupt subroutine for Timer0
 	push r16
     in r16, SREG
-	push r16                   ; Prologue starts.
+	push r16                    ; Prologue starts.
 	push YH                     ; Save all conflict registers in the prologue.
 	push YL
 	push r25
@@ -98,10 +112,6 @@ Timer0OVF:                      ; interrupt subroutine for Timer0
 	lsr r25
 	ror r24
 
-	
-	; TODO(hongfei): 	the number of rotations, most likely, will be larger than 255
-	; 					therefore we need to display the value of r25 together with r24 on screen as well
-	; 					the current function display_decimal only displays the value of r24, need to expand its capability
 	mov r16, r24
 	rcall display_decimal
 	Clear RotationCounter       ; Reset the rotation counter.
@@ -117,19 +127,22 @@ Timer0OVF:                      ; interrupt subroutine for Timer0
 	st - Y, r24
 	rjmp endif
 NotSecond:
-	st Y, r25                   ; Store the value of the temporary counter.
+	st Y, r25                  	; Store the value of the temporary counter.
 	st - Y, r24
 endif:
-	pop r24                      ; Epilogue starts;
-	pop r25                      ; Restore all conflict registers from the stack.
+	pop r24                     ; Epilogue starts;
+	pop r25                     ; Restore all conflict registers from the stack.
 	pop YL
 	pop YH
 	pop r16
 	out SREG, r16
-	pop r16                    ; Epilogue ends.
+	pop r16                    	; Epilogue ends.
 	reti
 
 
+; --------------------------------------------------------------------------------------------------------------- ;
+; ------------------------------------------------------- External Interrupt 2 Handler -------------------------- ;
+; --------------------------------------------------------------------------------------------------------------- ;
 EXT_INT2:
 	push r16
 	in r16, SREG
@@ -138,29 +151,22 @@ EXT_INT2:
 	push YL
 	push r25
 	push r24
-	push r23
 
 	ldi YL, low(RotationCounter)
 	ldi YH, high(RotationCounter)
 	ld r24, Y+
 	ld r25, Y
 
-	adiw r25:r24, 1			; Increase the rotation counter by one
+	adiw r25:r24, 1				; Increase the rotation counter by one
 
 	st Y, r25
 	st - Y, r24
 
-wait_for_rising:			;make sure rising edge detected before continuing to prevent multiple increments on the same hole 
-	in r23,PIND
-	sbrs r23,2
+wait_for_rising:				; make sure rising edge detected before continuing to prevent multiple increments on the same hole 
+	in r24,PIND
+	sbrs r24, PORTD_PIN_TDX2
 	rjmp wait_for_rising
 
-	
-	; Uncomment to show the 'LED not flashing when disk is rotating' problem
-	; 	perhaps the waves are not stable at all and we got constant falling edges?
-	; com leds
-	; out PORTC, leds
-	pop r23
 	pop r24
 	pop r25
 	pop YL
@@ -170,7 +176,9 @@ wait_for_rising:			;make sure rising edge detected before continuing to prevent 
 	pop r16
 	reti
 
-
+; --------------------------------------------------------------------------------------------------------------- ;
+; ------------------------------------------------------- Main Program (Setup) ---------------------------------- ;
+; --------------------------------------------------------------------------------------------------------------- ;
 	
 main:
 	ldi r16, low(RAMEND)
@@ -198,15 +206,12 @@ main:
 	do_lcd_command 0b00000110 ; increment, no display shift
 	do_lcd_command 0b00001110 ; Cursor on, bar, no blink
 
-
-
-	ldi leds, 0xff            ; Init pattern displayed
-	out PORTC, leds
-	ldi leds, PATTERN
 	Clear TempCounter         ; Initialize the temporary counter to 0
 	Clear SecondCounter       ; Initialize the second counter to 0
 	Clear RotationCounter     ; Initialize the rotation counter to 0
 
+
+	; Timer0 interrupt set up and initialization
 	ldi temp, 0b00000000
 	out TCCR0A, temp
 	ldi temp, 0b00000011
@@ -214,6 +219,8 @@ main:
 	ldi temp, 1<<TOIE0
 	sts TIMSK0, temp           	; T / C0 interrupt enable
 
+
+	; External interrupt (INT2) set up and initialization
 	ldi temp, 0 << PORTD_PIN_TDX2
 	out DDRD, temp          	; Set PD2 bit 2 as input
 	ldi temp, 1 << PORTD_PIN_TDX2
@@ -222,7 +229,7 @@ main:
 	ldi temp, (2 << CS20)		; EICRA is control register specifying falling edge 
 	sts EICRA, temp            	; INT2 falling edge, Since INT2 is connected to OpO pin, and OpO will go low when the detector can see the light
 
-	in temp, EIMSK				;EIMSK is mask register to activate INT2
+	in temp, EIMSK				; EIMSK is mask register to activate INT2
 	ori temp, 1 << INT2		
 	out EIMSK, temp            	; INT2 interrupt enable
 
@@ -231,11 +238,10 @@ loop:
 	rjmp loop                   ; loop forever
 
 
+; --------------------------------------------------------------------------------------------------------------- ;
+; ------------------------------------------------------- Subroutines ------------------------------------------- ;
+; --------------------------------------------------------------------------------------------------------------- ;
 
-
-; TODO(hongfei): 	the number of rotations, most likely, will be larger than 255
-; 					therefore we need to display the value of r25 together with r24 on screen as well
-; 					the current function display_decimal only displays the value of r24, need to expand its capability
 ; Binary number to display stored in r16
 display_decimal:
 	push r18
@@ -312,7 +318,7 @@ end_double_dabble:
 	pop r18
 	ret
 
-; funcions
+
 lcd_command:
 	out PORTF, r16
 	nop
