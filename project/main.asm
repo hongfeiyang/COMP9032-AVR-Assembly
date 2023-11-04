@@ -582,8 +582,8 @@ map_to_data:
     ret
 
 
-;copy map from program memory to data memory and invert
-map_to_data_invert:
+;copy map from program memory to data memory and transpose
+map_to_data_transpose:
     ;prologue
     push ZL
     push ZH
