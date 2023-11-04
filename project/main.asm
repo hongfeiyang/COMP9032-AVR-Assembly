@@ -11,12 +11,15 @@
 .def state=r22
 .def spd=r23
 .def temp1=r24
+.def counter=r25
 
 
 .equ LCD_RS = 7
 .equ LCD_E = 6
 .equ LCD_RW = 5
 .equ LCD_BE = 4
+
+.equ map_size=4
 
 
 
@@ -545,4 +548,71 @@ display_speed_direction:
     ldi temp1, '/'              ;display /
     do_lcd_data temp1
     do_lcd_data direction       ;display diection
+    ret
+
+;copy map from program memory to data memory
+map_to_data:
+    ;prologue
+    push ZL
+    push ZH
+    push YL
+    push YH
+    push temp1
+    push counter
+    ;body
+    map_copy:
+        ldi ZL, low(map)		;let Z point to map
+        ldi ZH, high(map)
+        ldi YL, low(0x0000)     ;let Y point to dseg 0
+        ldi YH, high(0x0000)
+        ldi counter, map_size	;set counter
+    map_copy_loop:
+        lpm temp1, Z+			;copy value from map
+        st Y+, temp1            ;save value to data memory
+        subi counter, 1			;check if all values pushed
+        cpi counter, 0
+        brne map_copy_loop
+    ;epilogue
+    pop counter
+    pop temp1
+    pop YH
+    pop YL
+    pop ZH
+    pop ZL
+    ret
+
+
+;copy map from program memory to data memory and invert
+map_to_data_invert:
+    ;prologue
+    push ZL
+    push ZH
+    push temp1
+    push counter
+    ;body
+    push_matrix:
+        ldi ZL, low(map)		;let Z point to matrix
+        ldi ZH, high(map)
+        ldi counter, map_size	;set counter
+    push_matrix_loop:
+        lpm temp1, Z+			;push value from matrix onto stack
+        push temp1
+        subi counter, 1			;check if all values pushed
+        cpi counter, 0
+        brne push_matrix_loop
+    pop_matrix:
+        ldi ZL, low(map)		;let Z point to matrix
+        ldi ZH, high(map)
+        ldi counter, map_size	;set counter
+    pop_matrix_loop:
+        pop	temp1				;pop value from stack into memory
+        st Z+, temp1
+        subi counter, 1			;check if all values popped
+        cpi counter, 0
+        brne pop_matrix_loop
+    ;epilogue
+    pop counter
+    pop temp1
+    pop ZH
+    pop ZL
     ret
