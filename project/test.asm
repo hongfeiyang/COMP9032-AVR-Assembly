@@ -42,7 +42,11 @@
 
 .cseg
 .org 0x0000
-	jmp RESET                   ; Reset interrupt vector 
+	jmp RESET                   ; Reset interrupt vector
+.org INT0addr
+    jmp EXT_INT0                ; INT0 interrupt vector
+.org INT1addr
+    jmp EXT_INT1                ; INT1 interrupt vector 
 .org OVF0addr
 	jmp Timer0OVF               ; Timer0 overflow interrupt vector
 
@@ -106,6 +110,14 @@ RESET:
 	out TCCR0B, r16          	; Prescaler value=64, counting 1024 us
 	ldi r16, 1<<TOIE0
 	sts TIMSK0, r16           	; T / C0 interrupt enable
+
+
+    ; INT0 and INT1 interrupt set up and initialization
+    ldi r16, (2<<ISC00) | (2<<ISC10) ; Falling edge triggered interrupt
+    sts EICRA, r16              ; Configure INT0 and INT1 as falling edge triggered interrupt
+    in r16, EIMSK
+    ori r16, (1<<INT0) | (1<<INT1)
+    out EIMSK, r16              ; Enable INT0 interrupt
 
     sei
 
@@ -194,13 +206,14 @@ Timer0OVF:                      ; interrupt subroutine for Timer0
 	cpi r25, high(500)
 	brne NotSecond
 	
-    ;; Otherwise we have reached 1000ms
-    ;; Do something here
+    ;; Otherwise we have reached 500ms
+
     M_CLEAR_LCD
     rcall lcd_wait_busy
     rcall print_curr_path
     rcall print_status_bar
 
+    
 	Clear TempCounter           ; Reset the temporary counter.
 	ldi YL, low(SecondCounter)  ; Load the address of the second
 	ldi YH, high(SecondCounter) ; counter.
@@ -226,10 +239,57 @@ endif:
 	pop r16                    	; Epilogue ends.
 	reti
 
+; --------------------------------------------------------------------------------------------------------------- ;
+; ------------------------------------------------------- INT0 Handler ------------------------------------------ ;
+; --------------------------------------------------------------------------------------------------------------- ;
+
+EXT_INT0:
+    push r16
+    in r16, SREG
+    push r16
+
+    mov r16, Spd
+    cpi r16, 1              ; Minimum speed is 1, do not decrease speed if it is 1 already
+    breq end_dec_speed
+    dec r16
+    mov Spd, r16
+    
+end_dec_speed:
+
+    pop r16
+    out SREG, r16
+    pop r16
+    reti
+
+; --------------------------------------------------------------------------------------------------------------- ;
+; ------------------------------------------------------- INT1 Handler ------------------------------------------ ;
+; --------------------------------------------------------------------------------------------------------------- ;
+
+EXT_INT1:
+    push r16
+    in r16, SREG
+    push r16
+
+    mov r16, Spd
+    cpi r16, 9              ; Maximum speed is 9, do not increase speed if it is 9 already
+    breq end_inc_speed
+    inc r16
+    mov Spd, r16
+
+end_inc_speed:
+    pop r16
+    out SREG, r16
+    pop r16
+    reti
+
+; --------------------------------------------------------------------------------------------------------------- ;
+; ------------------------------------------------------- Main Loop --------------------------------------------- ;
+; --------------------------------------------------------------------------------------------------------------- ;
 
 main_loop:
     push r16
     rcall wait_for_key_input
+    rcall sleep_200ms
     mov r16, r0
     cpi r16, '2'
     breq north
@@ -239,21 +299,53 @@ main_loop:
     breq east
     cpi r16, '8'
     breq south
+    cpi r16, '0'
+    breq down
+    cpi r16, '5'
+    breq up
+    cpi r16, 'A'    ; A -> Toggle Between Flight and Hover
+    breq toggle_flight_state
+
     rjmp end_main_loop
+toggle_flight_state:
+    mov r16, FlightState
+    cpi r16, 'F'
+    breq flying
+    cpi r16, 'H'
+    breq hovering
+    rjmp end_main_loop
+
+flying:
+    ldi r16, 'H'
+    rjmp update_flight_state
+hovering:
+    ldi r16, 'F'
+    rjmp update_flight_state
+update_flight_state:
+    mov FlightState, r16
+    rjmp end_main_loop
+
 north:
     ldi r16, 'N'
-    rjmp end_main_loop
+    rjmp update_direction
 south:
     ldi r16, 'S'
-    rjmp end_main_loop
+    rjmp update_direction
 east:
     ldi r16, 'E'
-    rjmp end_main_loop
+    rjmp update_direction
 west:
     ldi r16, 'W'
-    rjmp end_main_loop
-end_main_loop:
+    rjmp update_direction
+up:
+    ldi r16, 'U'
+    rjmp update_direction
+down:
+    ldi r16, 'D'
+    rjmp update_direction
+update_direction:
     mov Direction, r16
+end_main_loop:
     pop r16
     rjmp main_loop
 
