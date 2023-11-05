@@ -26,6 +26,8 @@
 
 
 .equ MAP_SIZE       =   16
+.equ MIN_SPEED      =   1
+.equ MAX_SPEED      =   9
 .def DroneX         =   r4
 .def DroneY         =   r5
 .def DroneZ         =   r6
@@ -86,9 +88,11 @@ RESET:
     clr DroneX
     clr DroneY
     clr DroneZ
-    ldi r16, 'E'
-    mov Direction, r16
     ldi r16, 1
+    mov DroneZ, r16
+    ldi r16, 'S'
+    mov Direction, r16
+    ldi r16, MIN_SPEED
     mov Spd, r16
     ldi r16, 'F'
     mov FlightState, r16
@@ -183,6 +187,7 @@ end_set_up_accident_location:
     pop r18
     ret
 
+
 ; --------------------------------------------------------------------------------------------------------------- ;
 ; ------------------------------------------------------- Timer0 Overflow Handler ------------------------------- ;
 ; --------------------------------------------------------------------------------------------------------------- ;
@@ -205,15 +210,11 @@ Timer0OVF:                      ; interrupt subroutine for Timer0
 	brne NotSecond
 	cpi r25, high(500)
 	brne NotSecond
-	
-    ;; Otherwise we have reached 500ms
 
-    M_CLEAR_LCD
-    rcall lcd_wait_busy
-    rcall print_curr_path
-    rcall print_status_bar
+	; Otherwise we have reached 500ms
 
-    
+    rcall step_drone
+   
 	Clear TempCounter           ; Reset the temporary counter.
 	ldi YL, low(SecondCounter)  ; Load the address of the second
 	ldi YH, high(SecondCounter) ; counter.
@@ -221,7 +222,7 @@ Timer0OVF:                      ; interrupt subroutine for Timer0
 	ld r25, Y
     adiw r25:r24, 1             ; Increase the second counter by one.
 
-    out PORTC, r24              ; Display the second counter on the LED bar.
+    ; out PORTC, r24              ; Display the second counter on the LED bar.
 
 	st Y, r25                   ; Store the value of the second counter.
 	st - Y, r24
@@ -249,7 +250,7 @@ EXT_INT0:
     push r16
 
     mov r16, Spd
-    cpi r16, 1              ; Minimum speed is 1, do not decrease speed if it is 1 already
+    cpi r16, MIN_SPEED              ; do not decrease speed if it is min already
     breq end_dec_speed
     dec r16
     mov Spd, r16
@@ -271,7 +272,7 @@ EXT_INT1:
     push r16
 
     mov r16, Spd
-    cpi r16, 9              ; Maximum speed is 9, do not increase speed if it is 9 already
+    cpi r16, MAX_SPEED              ; do not increase speed if it is max already
     breq end_inc_speed
     inc r16
     mov Spd, r16
@@ -350,6 +351,144 @@ end_main_loop:
     rjmp main_loop
 
 
+; --------------------------------------------------------------------------------------------------------------- ;
+; ------------------------------------------------------- Subroutines ------------------------------------------- ;
+; --------------------------------------------------------------------------------------------------------------- ;
+
+step_drone:
+    push r16
+
+    mov r16, FlightState
+    cpi r16, 'C'
+    breq has_crashed
+    cpi r16, 'H'
+    breq is_hovering
+    cpi r16, 'R'
+    breq is_returning
+    cpi r16, 'F'
+    breq is_flying
+    rjmp end_step_drone
+has_crashed:
+    rjmp end_step_drone
+is_hovering:
+    rjmp end_step_drone
+is_returning:
+    rjmp end_step_drone
+is_flying:
+    rcall update_drone_position
+    rcall update_status_if_crashed
+    rjmp end_step_drone
+end_step_drone:
+
+    ; At the end of the step function we need to refresh the LCD
+    M_CLEAR_LCD
+    rcall lcd_wait_busy
+    rcall print_curr_path
+    rcall print_status_bar
+
+    pop r16
+    ret
+
+; Change the FlightState register to 'C' if the drone has crashed
+; Otherwise this function has no effect
+; Called after update_drone_position
+update_status_if_crashed:
+    push r16
+    ; Check horizontal
+    mov r16, DroneX
+    cpi r16, 0
+    brlt crashed
+    cpi r16, MAP_SIZE
+    brge crashed
+    ; Check vertical
+    mov r16, DroneY
+    cpi r16, 0
+    brlt crashed
+    cpi r16, MAP_SIZE
+    brge crashed
+    ; Check Z
+    mov r16, DroneZ
+    rcall get_tile_height
+    cp r16, r0
+    brlt crashed
+    rjmp end_check
+crashed:
+    ldi r16, 'C'
+    mov FlightState, r16
+end_check:
+    pop r16
+    ret
+
+; After update drone position, check for crash
+update_drone_position:
+    push r16
+    push r17    ; Store current height of tile
+    push r18    ; Store next tile's height
+
+    rcall get_tile_height
+    mov r17, r0
+
+    mov r16, Direction
+    cpi r16, 'N'
+    breq north_update
+    cpi r16, 'S'
+    breq south_update
+    cpi r16, 'E'
+    breq east_update
+    cpi r16, 'W'
+    breq west_update
+
+    rjmp end_update_drone_position
+
+north_update:
+    sub DroneY, Spd
+    rjmp update_drone_z
+south_update:
+    add DroneY, Spd
+    rjmp update_drone_z
+east_update:
+    add DroneX, Spd
+    rjmp update_drone_z
+west_update:
+    sub DroneX, Spd
+    rjmp update_drone_z   ; For consistency
+update_drone_z:
+
+    ; Only try to cope with mountain contour if speed is 1
+    ; which means next tile this drone will be on is an adjacent tile
+    mov r16, Spd
+    cpi r16, 1
+    brne end_update_drone_position
+
+    rcall get_tile_height
+    mov r18, r0
+
+    ; Now we can compare prev tile height and curr (new) tile height
+    ; Update Z corrdinate to try to cope with mountain contour
+
+    cp r18, r17
+    breq end_update_drone_position
+    cp r18, r17
+    brlt fly_lower
+    cp r17, r18
+    brlt fly_higher
+
+    rjmp end_update_drone_position
+
+fly_higher:
+    inc DroneZ
+    rjmp end_update_drone_position
+fly_lower:
+    dec DroneZ
+    rjmp end_update_drone_position       ; for consistency
+
+end_update_drone_position:
+    
+    pop r18
+    pop r17
+    pop r16
+    ret
+
 
 print_curr_path:
     push r16
@@ -390,25 +529,19 @@ print_status_bar:
     ldi r16, '('
     M_DO_LCD_DATA r16
     mov r16, DroneX
-    subi r16, -'0'
-    M_DO_LCD_DATA r16
+    rcall display_decimal
     ldi r16, ','
     M_DO_LCD_DATA r16
     mov r16, DroneY
-    subi r16, -'0'
-    M_DO_LCD_DATA r16
+    rcall display_decimal
     ldi r16, ','
     M_DO_LCD_DATA r16
     mov r16, DroneZ
-    subi r16, -'0'
-    M_DO_LCD_DATA r16
+    rcall display_decimal
     ldi r16, ')'
     M_DO_LCD_DATA r16
-    ldi r16, ' '
-    M_DO_LCD_DATA r16
     mov r16, Spd
-    subi r16, -'0'
-    M_DO_LCD_DATA r16
+    rcall display_decimal
     ldi r16, '/'
     M_DO_LCD_DATA r16
     M_DO_LCD_DATA Direction
@@ -489,15 +622,21 @@ end_print_col_loop:
     pop ZH
     ret 
 
-display_tile:
+
+
+
+; Get the hight of the current tile the drone is on / above
+; leave the result at r0
+get_tile_height:
     push ZH
     push ZL
-    push r16
-    push r0
-    push r1
+   
     push r18
     push r19
 
+    ; tile_index = Y * MAP_SIZE + X
+    ; which means the tile of interest in map is the nth tile where
+    ; n is calculated by Row index * MAP_SIZE + Column index
     ldi r19, 0
     ldi r18, MAP_SIZE
     mul DroneY, r18
@@ -508,105 +647,24 @@ display_tile:
     ldi ZH, high(map<<1)
     ldi ZL, low(map<<1)
 
+    ; Update Z pointer by this offset to get the address of the this tile
     add ZL, r0
     adc ZH, r1
 
-    lpm r16, Z
-    subi r16, -'0'
-    M_DO_LCD_DATA r16
+    ; Load the height of the this tile, store it in r0
+    lpm r18, Z
+    mov r0, r18
+
+    ; subi r16, -'0'
+    ; M_DO_LCD_DATA r16
 
     pop r19
     pop r18
-    pop r1
-    pop r0
-    pop r16
     pop ZL
     pop ZH
     ret
 
-
-
-
-; --------------------------------------------------------------------------------------------------------------- ;
-; ------------------------------------------------------- Subroutines ------------------------------------------- ;
-; --------------------------------------------------------------------------------------------------------------- ;
-
-; Binary number to display stored in r16
-display_decimal:
-	push r18
-	in r18, SREG
-	push r18
-	push r16 				; hold binary number to be converted and displayed
-    push r19 				; hold number of iterations
-    push r17 				; hold temporary value
-    push r24				; hold lower two digits of 8 bit BCD formatted number
-    push r25 				; hold upper two digits of 8 bit BCD formatted number (8 bits can only have 1 upper digit)
-
-    ; Using the double dabble algorithm
-    ; https://en.wikipedia.org/wiki/Double_dabble
-    ; Convert to packed BCD format
-	; For example, 5 becomes 0101, 10 becomes 0001 0000
-
-    clr r24
-    clr r25
-    ldi r19, 8		; number of iterations, since we have 8 bits to convert
-
-double_dabble_loop:
-    lsl r16
-    rol r24
-    rol r25
-
-    dec r19
-    tst r19
-    breq end_double_dabble
-
-check_ones:
-    mov r17, r24
-    andi r17, 0b00001111
-    cpi r17, 5
-    brlo check_tens
-    subi r24, -3
-check_tens:
-	mov r17, r24
-	swap r17
-	andi r17, 0b00001111
-	cpi r17, 5
-	brlo double_dabble_loop
-	subi r24, -3<<4
-	rjmp double_dabble_loop
-end_double_dabble:
-
-	; Display the BCD
-
-	M_CLEAR_LCD
-
-	; Display the hundreds
-    andi r25, 0b00001111
-    subi r25, -'0'
-    ; do_lcd_data r25
-
-	; Display the tens
-    mov r17, r24
-    swap r17
-    andi r17, 0b00001111
-    subi r17, -'0'
-    ; do_lcd_data r17
-
-	; Display the ones
-    andi r24, 0b00001111
-    subi r24, -'0'
-    ; do_lcd_data r24
-
-    pop r25
-	pop r24
-    pop r17
-    pop r19
-	pop r16
-	pop r18
-	out SREG, r18
-	pop r18
-	ret
-
+.include "bcd.asm"
 .include "lcd_functions.asm"
 .include "keypad_functions.asm"
 .include "led_bar_functions.asm"
