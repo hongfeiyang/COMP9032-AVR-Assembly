@@ -29,6 +29,7 @@
 .equ MAP_SIZE       =   16
 .equ MIN_SPEED      =   1
 .equ MAX_SPEED      =   9
+.equ VISIBILITY     =   1
 .def DroneX         =   r4
 .def DroneY         =   r5
 .def DroneZ         =   r6
@@ -224,9 +225,9 @@ Timer0OVF:                      ; interrupt subroutine for Timer0
 no_drone_command:
     ; User hasn't input anything, drone continue to move according its inertia
 
-	cpi r24, low(500)          ; Check if (r25:r24)=500
+	cpi r24, low(1000)          ; Check if (r25:r24)=500
 	brne NotSecond
-	cpi r25, high(500)
+	cpi r25, high(1000)
 	brne NotSecond
 
 	; Otherwise we have reached 500ms
@@ -316,6 +317,7 @@ main_loop:
 ; Process the drone command input by the user, which has already been left on r0 register
 process_drone_command:
     push r16
+    push r17
     mov r16, r0
     cpi r16, '2'
     breq north
@@ -368,8 +370,12 @@ down:
     ldi r16, 'D'
     rjmp update_direction
 update_direction:
+    mov r17, FlightState
+    cpi r17, 'H'
+    brne end_process_drone_command  ; Do not allow direction change if drone is not in hovering state
     mov Direction, r16
 end_process_drone_command:
+    pop r17
     pop r16
     ret
 
@@ -393,18 +399,30 @@ step_drone:
     rjmp end_step_drone
 has_crashed:
     rjmp end_step_drone
-is_hovering:
-    rjmp end_step_drone
 is_returning:
+    rcall update_drone_position
+    rcall update_status_if_crashed      ; Still need to check for crash on its way back
+    rjmp end_step_drone
+is_hovering:
+    rcall update_drone_in_hovering_state
+    rcall update_status_if_crashed      ; Still need to check for crash on its way back
     rjmp end_step_drone
 is_flying:
     rcall update_drone_position
     rcall update_status_if_crashed
+
+    ; If drone has crashed during this step, then we dont need to check if it has found the accident location
+    mov r16, FlightState
+    cpi r16, 'C'
+    breq end_step_drone
+
+    ; Otherwise we proceed to check if the drone has found the accident location
+    rcall update_status_if_found
     rjmp end_step_drone
 end_step_drone:
 
     ; At the end of the step function a new Frame (screen) should be drawn
-    ; on LCD, therefore the LCD has a display refresh rate of 1 / 500ms = 2Hz (Sort of :))
+    ; on LCD, therefore the LCD has a display refresh rate of 1 / 500ms = 2Hz (Sort of :P)
     ; M_CLEAR_LCD
     ; rcall lcd_wait_busy
     rcall print_curr_path
@@ -413,18 +431,37 @@ end_step_drone:
     pop r16
     ret
 
+; Change the FlightState register to 'R' if the drone has 'seen'
+; the accident location, given the visibilty (1)
+; For now kogic is very simple, only when the drone is above the accident location can the drone see it
+; Drone does not have a camera that can look around :(
+update_status_if_found:
+    push r16
+    rcall get_tile_height
+    mov r16, r0
+    subi r16, VISIBILITY
+    cp r16, DroneZ
+    brge found  ; terran height + visibility >= drone height (given drone didnt crash)
+    rjmp end_check_found
+found:
+    ldi r16, 'R'
+    mov FlightState, r16
+end_check_found:
+    pop r16
+    ret
+
 ; Change the FlightState register to 'C' if the drone has crashed
 ; Otherwise this function has no effect
 ; Called after update_drone_position
 update_status_if_crashed:
     push r16
-    ; Check horizontal
+    ; Check X
     mov r16, DroneX
     cpi r16, 0
     brlt crashed
     cpi r16, MAP_SIZE
     brge crashed
-    ; Check vertical
+    ; Check Y
     mov r16, DroneY
     cpi r16, 0
     brlt crashed
@@ -443,7 +480,33 @@ end_check:
     pop r16
     ret
 
-; After update drone position, check for crash
+
+update_drone_in_hovering_state:
+    push r16
+
+    mov r16, Direction
+    
+    cpi r16, 'U'
+    breq up_update
+    cpi r16, 'D'
+    breq down_update
+
+up_update:
+    add DroneZ, Spd
+    rjmp end_update_drone_in_hovering_state
+down_update:
+    sub DroneZ, Spd
+    rjmp end_update_drone_in_hovering_state
+
+end_update_drone_in_hovering_state:
+    pop r16
+    ret
+
+
+
+; TODO: need to check for negative speed... 
+; TODO: Need to set a maximum height...
+; After update drone position
 update_drone_position:
     push r16
     push r17    ; Store current height of tile
