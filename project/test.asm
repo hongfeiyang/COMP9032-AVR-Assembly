@@ -30,6 +30,7 @@
 .equ MIN_SPEED      =   1
 .equ MAX_SPEED      =   9
 .equ VISIBILITY     =   1
+.equ MAX_HEIGHT     =   100
 .def DroneX         =   r4
 .def DroneY         =   r5
 .def DroneZ         =   r6
@@ -221,6 +222,7 @@ Timer0OVF:                      ; interrupt subroutine for Timer0
     cp r0, r16
     breq no_drone_command
     rcall process_drone_command
+    rcall flash_three_times
 
 no_drone_command:
     ; User hasn't input anything, drone continue to move according its inertia
@@ -400,8 +402,6 @@ step_drone:
 has_crashed:
     rjmp end_step_drone
 is_returning:
-    rcall update_drone_position
-    rcall update_status_if_crashed      ; Still need to check for crash on its way back
     rjmp end_step_drone
 is_hovering:
     rcall update_drone_in_hovering_state
@@ -437,9 +437,17 @@ end_step_drone:
 ; Drone does not have a camera that can look around :(
 update_status_if_found:
     push r16
+
+    ; Check X
+    cp DroneX, AccidentX
+    brne end_check_found
+    ; Check Y
+    cp DroneY, AccidentY
+    brne end_check_found
+    ; Check Z
     rcall get_tile_height
     mov r16, r0
-    subi r16, VISIBILITY
+    subi r16, -VISIBILITY
     cp r16, DroneZ
     brge found  ; terran height + visibility >= drone height (given drone didnt crash)
     rjmp end_check_found
@@ -472,6 +480,8 @@ update_status_if_crashed:
     rcall get_tile_height
     cp r16, r0
     brlt crashed
+    cpi r16, MAX_HEIGHT
+    brge crashed
     rjmp end_check
 crashed:
     ldi r16, 'C'
@@ -487,14 +497,14 @@ update_drone_in_hovering_state:
     mov r16, Direction
     
     cpi r16, 'U'
-    breq up_update
+    breq hover_up
     cpi r16, 'D'
-    breq down_update
+    breq hover_down
 
-up_update:
+hover_up:
     add DroneZ, Spd
     rjmp end_update_drone_in_hovering_state
-down_update:
+hover_down:
     sub DroneZ, Spd
     rjmp end_update_drone_in_hovering_state
 
@@ -524,6 +534,10 @@ update_drone_position:
     breq east_update
     cpi r16, 'W'
     breq west_update
+    cpi r16, 'U'            ; Should we allow UP or DOWN in flight mode? or should we allow it only in hover mode
+    breq up_update
+    cpi r16, 'D'
+    breq down_update
 
     rjmp end_update_drone_position
 
@@ -539,6 +553,12 @@ east_update:
 west_update:
     sub DroneX, Spd
     rjmp update_drone_z   ; For consistency
+up_update:
+    add DroneZ, Spd
+    rjmp end_update_drone_position
+down_update:
+    sub DroneZ, Spd
+    rjmp end_update_drone_position
 update_drone_z:
 
     ; Only try to cope with mountain contour if speed is 1
