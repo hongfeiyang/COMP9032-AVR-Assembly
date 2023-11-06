@@ -1,5 +1,6 @@
 
 lcd_command:
+	push r16
 	out PORTF, r16
 	ldi r16, (0<<LCD_RS) | (0<<LCD_RW)		; Write mode to instruction register
 	out PORTA, r16
@@ -12,9 +13,11 @@ lcd_command:
 	nop				; delay to meet timing req. (Enable cycle time)
 	nop
 	nop
+	pop r16
 	ret
 
 lcd_data:
+	push r16
 	out PORTF, r16
 	ldi r16, (1 << LCD_RS) | (0<<LCD_RW); Write mode to data register
 	out PORTA, r16 						; RS = 1, RW = 0 for a data write
@@ -27,6 +30,7 @@ lcd_data:
 	nop 								; delay to meet timing (Enable cycle time)
 	nop
 	nop
+	pop r16
 	ret
 
 

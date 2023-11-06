@@ -1,11 +1,12 @@
 
 
 ; Symposis:
-;   Wait for a key to be pressed on the keypad.
-;   If a key is pressed, the function terminates and left the ASCII value of the key pressed on the r0 register.
+;   Scan the keypad once, check every column and row
+;   If a key is pressed, convert it to ASCII and the result on the r0 register.
+;   If no key is pressed, leave 0 (NULL character) to r0.
 ; Registers changed by the function:
 ;   r0
-wait_for_key_input:
+scan_key_pad:
         push r15
         push r16
         push cmask
@@ -18,7 +19,7 @@ wait_for_key_input:
 		clr	col						; initial column
 	colloop:
 		cpi col, 4
-		breq key_start
+		breq no_input				; if we have checked all columns and no key is pressed, leave r0 to be 0 (NULL character)
 		sts	PORTL, cmask			; set column to mask value (one column off)
 		ldi r16, 0xFF               
 	delay:                          ; delay 512 cycles, on a 16Mhz board this is 32ms
@@ -78,9 +79,14 @@ wait_for_key_input:
 	zero:
 		ldi r16, '0'				; set to zero
 	convert_end:
-
         mov r0, r16                 ; left result on the r0 register
+		rjmp key_input_end
 
+	no_input:
+		clr r0						; leave 0 (NULL character) to r0, the result register
+		rjmp key_input_end
+
+	key_input_end:
         pop row
         pop col
         pop rmask

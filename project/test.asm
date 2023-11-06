@@ -4,6 +4,7 @@
 .include "keypad_defs.asm"
 
 .include "lcd_macros.asm"
+.include "keypad_macros.asm"
 
 .macro Clear
     push r16
@@ -77,9 +78,6 @@ RESET:
 	ldi r16, high(RAMEND)
 	out SPH, r16
 
-	ldi r16, PORTLDIR			; columns are outputs, rows are inputs
-	sts	DDRL, r16				; set up keypad
-
     ser r16                     ; Set up LED bar to be output pins
     out DDRC, r16
 
@@ -96,6 +94,8 @@ RESET:
     mov Spd, r16
     ldi r16, 'F'
     mov FlightState, r16
+
+    M_KEYPAD_INIT
 
     M_LCD_INIT
     
@@ -157,9 +157,14 @@ read_accident_location:
     push r18
 
 get_x_corrdinate:
-    rcall wait_for_key_input
+    rcall scan_key_pad
+    mov r18, r0
+    cpi r18, 0
+    breq get_x_corrdinate
+
     rcall sleep_200ms
     rcall sleep_200ms
+
     M_DO_LCD_DATA r0
     mov r18, r0
     cpi r18, '*'
@@ -170,7 +175,11 @@ get_x_corrdinate:
     out PORTC, AccidentX
     rjmp get_x_corrdinate
 get_y_corrdinate:
-    rcall wait_for_key_input
+    rcall scan_key_pad
+    mov r18, r0
+    cpi r18, 0
+    breq get_y_corrdinate
+
     rcall sleep_200ms
     rcall sleep_200ms
     M_DO_LCD_DATA r0
@@ -205,7 +214,16 @@ Timer0OVF:                      ; interrupt subroutine for Timer0
 	ld r24, Y+                  ; Load the value of the temporary counter.
 	ld r25, Y
     adiw r25:r24, 1             ; Increase the temporary counter by one
-	
+
+    rcall scan_key_pad
+    ldi r16, 0
+    cp r0, r16
+    breq no_drone_command
+    rcall process_drone_command
+
+no_drone_command:
+    ; User hasn't input anything, drone continue to move according its inertia
+
 	cpi r24, low(500)          ; Check if (r25:r24)=500
 	brne NotSecond
 	cpi r25, high(500)
@@ -288,9 +306,16 @@ end_inc_speed:
 ; --------------------------------------------------------------------------------------------------------------- ;
 
 main_loop:
+    rjmp main_loop
+
+
+; --------------------------------------------------------------------------------------------------------------- ;
+; ------------------------------------------------------- Subroutines ------------------------------------------- ;
+; --------------------------------------------------------------------------------------------------------------- ;
+
+; Process the drone command input by the user, which has already been left on r0 register
+process_drone_command:
     push r16
-    rcall wait_for_key_input
-    rcall sleep_200ms
     mov r16, r0
     cpi r16, '2'
     breq north
@@ -306,16 +331,15 @@ main_loop:
     breq up
     cpi r16, 'A'    ; A -> Toggle Between Flight and Hover
     breq toggle_flight_state
-
-    rjmp end_main_loop
+    ; Otherwise, this command is unknown and should be ignored
+    rjmp end_process_drone_command
 toggle_flight_state:
     mov r16, FlightState
     cpi r16, 'F'
     breq flying
     cpi r16, 'H'
     breq hovering
-    rjmp end_main_loop
-
+    rjmp end_process_drone_command
 flying:
     ldi r16, 'H'
     rjmp update_flight_state
@@ -324,8 +348,7 @@ hovering:
     rjmp update_flight_state
 update_flight_state:
     mov FlightState, r16
-    rjmp end_main_loop
-
+    rjmp end_process_drone_command
 north:
     ldi r16, 'N'
     rjmp update_direction
@@ -346,15 +369,15 @@ down:
     rjmp update_direction
 update_direction:
     mov Direction, r16
-end_main_loop:
+end_process_drone_command:
     pop r16
-    rjmp main_loop
+    ret
 
 
-; --------------------------------------------------------------------------------------------------------------- ;
-; ------------------------------------------------------- Subroutines ------------------------------------------- ;
-; --------------------------------------------------------------------------------------------------------------- ;
-
+; Step function for the drone
+; This function represents an atomic unit of time, is a single indivisible step
+; that discretise time into ticks,
+; Should only be called in a timer interrupt 
 step_drone:
     push r16
 
@@ -380,9 +403,10 @@ is_flying:
     rjmp end_step_drone
 end_step_drone:
 
-    ; At the end of the step function we need to refresh the LCD
-    M_CLEAR_LCD
-    rcall lcd_wait_busy
+    ; At the end of the step function a new Frame (screen) should be drawn
+    ; on LCD, therefore the LCD has a display refresh rate of 1 / 500ms = 2Hz (Sort of :))
+    ; M_CLEAR_LCD
+    ; rcall lcd_wait_busy
     rcall print_curr_path
     rcall print_status_bar
 
