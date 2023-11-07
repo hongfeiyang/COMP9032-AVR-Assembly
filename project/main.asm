@@ -271,12 +271,15 @@ EXT_INT0:
     push r16
 
     mov r16, Spd
-    cpi r16, MIN_SPEED              ; do not decrease speed if it is min already
+    cpi r16, MIN_SPEED      ; do not decrease speed if it is min already
     breq end_dec_speed
     dec r16
     mov Spd, r16
     
 end_dec_speed:
+
+    in r16, EIMSK
+    ori r16, (0<<INT0)      ; Turn off this shit to prevent bouncing
 
     pop r16
     out SREG, r16
@@ -293,12 +296,16 @@ EXT_INT1:
     push r16
 
     mov r16, Spd
-    cpi r16, MAX_SPEED              ; do not increase speed if it is max already
+    cpi r16, MAX_SPEED      ; do not increase speed if it is max already
     breq end_inc_speed
     inc r16
     mov Spd, r16
 
 end_inc_speed:
+
+    in r16, EIMSK
+    ori r16, (0<<INT1)      ; Turn off this shit to prevent bouncing
+
     pop r16
     out SREG, r16
     pop r16
@@ -308,7 +315,33 @@ end_inc_speed:
 ; ------------------------------------------------------- Main Loop --------------------------------------------- ;
 ; --------------------------------------------------------------------------------------------------------------- ;
 
+; Main loop has one job, which is to constant query the status of INT0 and INT1
+; If one of them is not set, this means we have just pushed a button, to debounce it
+; we wait for a certain period to renabled it.
+; This is a quick and dirty way to do debouncing with interrupts, strictly speaking we
+; should have 2 counters for each PB, but since the time we debounce is only 50 ms and it is
+; unlikely for user to press these two buttons alternatively within 50ms, therefore this is
+; enough, worst case scenario one button waits for 100ms before it is reenabled.
 main_loop:
+    push r16
+    in r16, EIMSK
+    sbis r16, INT0      ; if INT0 is set, do nothing, otherwise we wait for 50ms and re-enables INT0
+    rjmp enable_INT0
+    sbis r16, INT1      ; if INT1 is set, do nothing, otherwise we wait for 50ms and re-enables INT1
+    rjmp enable_INT1
+    rjmp end_main_loop
+enable_INTO:
+    rcall sleep_50ms    ; Otherwise we just pressed a Push Button, wait for 50 ms to reenable it
+    in r16, EIMSK
+    ori r16, (1<<INT0)
+    rjmp end_main_loop
+enable_INT1:
+    rcall sleep_50ms
+    in r16, EIMSK
+    ori r16, (1<<INT1)
+    rjmp end_main_loop
+end_main_loop:
+    pop r16
     rjmp main_loop
 
 
@@ -515,7 +548,6 @@ end_update_drone_in_hovering_state:
 
 
 ; TODO: need to check for negative speed... 
-; TODO: Need to set a maximum height...
 ; After update drone position
 update_drone_position:
     push r16
