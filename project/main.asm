@@ -337,7 +337,7 @@ not_accident_0:
     clr r20
 main_listen:
     push r16
-    in r16, EIMSK
+    in r16, EIMSK       ;changed to sbrs
     sbrs r16, INT0      ; if INT0 is set, do nothing, otherwise we wait for 50ms and re-enables INT0
     rjmp enable_INT0
     sbrs r16, INT1      ; if INT1 is set, do nothing, otherwise we wait for 50ms and re-enables INT1
@@ -446,15 +446,13 @@ step_drone:
     breq is_flying
     rjmp end_step_drone
 has_crashed:
-    rcall print_status_bar
     rjmp end_step_drone
 is_returning:
-    rcall print_status_bar
     rjmp end_step_drone
 is_hovering:
     rcall update_drone_in_hovering_state
     rcall update_status_if_crashed      ; Still need to check for crash on its way back
-    rcall update_status_if_found
+    rcall update_status_if_found        ; Added to check if accident found from vertical movement
     rjmp end_step_drone
 is_flying:
     rcall update_drone_position
@@ -643,10 +641,11 @@ end_update_drone_position:
     pop r16
     ret
 
-
+;changed crash and return screen
 print_curr_path:
     push r16
     M_DO_LCD_COMMAND 0x00 | (1<<7)
+    ;clear path if return or crash
     ldi r16, 'R'
     cp FlightState,r16
     breq clear_path
@@ -678,6 +677,8 @@ end_print_curr_path:
     pop r16
     ret
 
+;updated to avoid printing speed/direction on return or crash
+;updated to show accident location rather than drone location on accident found 
 print_status_bar:
         push r16
 
