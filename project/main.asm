@@ -71,7 +71,7 @@ map:    .db     1,  2,  3,  4,  5,  6,  7,  8,  9,  8,  7,  6,  5,  4,  3,  0   
         .db     4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  5   ; ROW 13
         .db     3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  4   ; ROW 14
         .db     2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  3   ; ROW 15
-
+;               0   1   2   3   4   5   6   7   8   9   10  11  12  13  14  15
 opening_line:   .db     "Acci loc: "
 
 RESET:
@@ -322,15 +322,28 @@ end_inc_speed:
 ; should have 2 counters for each PB, but since the time we debounce is only 50 ms and it is
 ; unlikely for user to press these two buttons alternatively within 50ms, therefore this is
 ; enough, worst case scenario one button waits for 100ms before it is reenabled.
-main_loop:
+main_loop:  ; display initial state and path
+    rcall print_curr_path
+    rcall print_status_bar
+accident_0: ; check for edge case that accident is (0,0)
+    ldi r20,0
+    cp AccidentX,r20
+    brne not_accident_0
+    cp AccidentY,r20
+    brne not_accident_0
+    ldi r20, 'R'
+    mov FlightState,r20
+not_accident_0:
+    clr r20
+main_listen:
     push r16
     in r16, EIMSK
-    sbis r16, INT0      ; if INT0 is set, do nothing, otherwise we wait for 50ms and re-enables INT0
+    sbrs r16, INT0      ; if INT0 is set, do nothing, otherwise we wait for 50ms and re-enables INT0
     rjmp enable_INT0
-    sbis r16, INT1      ; if INT1 is set, do nothing, otherwise we wait for 50ms and re-enables INT1
+    sbrs r16, INT1      ; if INT1 is set, do nothing, otherwise we wait for 50ms and re-enables INT1
     rjmp enable_INT1
     rjmp end_main_loop
-enable_INTO:
+enable_INT0:
     rcall sleep_50ms    ; Otherwise we just pressed a Push Button, wait for 50 ms to reenable it
     in r16, EIMSK
     ori r16, (1<<INT0)
@@ -342,7 +355,7 @@ enable_INT1:
     rjmp end_main_loop
 end_main_loop:
     pop r16
-    rjmp main_loop
+    rjmp main_listen
 
 
 ; --------------------------------------------------------------------------------------------------------------- ;
@@ -433,12 +446,15 @@ step_drone:
     breq is_flying
     rjmp end_step_drone
 has_crashed:
+    rcall print_status_bar
     rjmp end_step_drone
 is_returning:
+    rcall print_status_bar
     rjmp end_step_drone
 is_hovering:
     rcall update_drone_in_hovering_state
     rcall update_status_if_crashed      ; Still need to check for crash on its way back
+    rcall update_status_if_found
     rjmp end_step_drone
 is_flying:
     rcall update_drone_position
@@ -452,15 +468,14 @@ is_flying:
     ; Otherwise we proceed to check if the drone has found the accident location
     rcall update_status_if_found
     rjmp end_step_drone
-end_step_drone:
 
+end_step_drone:
     ; At the end of the step function a new Frame (screen) should be drawn
     ; on LCD, therefore the LCD has a display refresh rate of 1 / 500ms = 2Hz (Sort of :P)
     ; M_CLEAR_LCD
     ; rcall lcd_wait_busy
     rcall print_curr_path
     rcall print_status_bar
-
     pop r16
     ret
 
@@ -631,9 +646,13 @@ end_update_drone_position:
 
 print_curr_path:
     push r16
-
     M_DO_LCD_COMMAND 0x00 | (1<<7)
-
+    ldi r16, 'R'
+    cp FlightState,r16
+    breq clear_path
+    ldi r16, 'C'
+    cp FlightState,r16
+    breq clear_path
     ldi r16, 'N'
     cp Direction, r16
     breq vertical
@@ -653,39 +672,59 @@ horizontal:
 vertical:
     rcall print_curr_col
     rjmp  end_print_curr_path
+clear_path:
+    M_CLEAR_LCD
 end_print_curr_path:
     pop r16
     ret
 
 print_status_bar:
-    push r16
+        push r16
 
-    M_DO_LCD_COMMAND 0x40 | (1<<7)
-
-    M_DO_LCD_DATA FlightState
-    ldi r16, ' '
-    M_DO_LCD_DATA r16
-    ldi r16, '('
-    M_DO_LCD_DATA r16
-    mov r16, DroneX
-    rcall display_decimal
-    ldi r16, ','
-    M_DO_LCD_DATA r16
-    mov r16, DroneY
-    rcall display_decimal
-    ldi r16, ','
-    M_DO_LCD_DATA r16
-    mov r16, DroneZ
-    rcall display_decimal
-    ldi r16, ')'
-    M_DO_LCD_DATA r16
-    mov r16, Spd
-    rcall display_decimal
-    ldi r16, '/'
-    M_DO_LCD_DATA r16
-    M_DO_LCD_DATA Direction
-    pop r16
-    ret
+        M_DO_LCD_COMMAND 0x40 | (1<<7)
+    print_flight_state:
+        M_DO_LCD_DATA FlightState
+    print_drone_coords:
+        ldi r16, ' '
+        M_DO_LCD_DATA r16
+        ldi r16, '('
+        M_DO_LCD_DATA r16
+        mov r16, DroneX
+        rcall display_decimal
+        ldi r16, ','
+        M_DO_LCD_DATA r16
+        mov r16, DroneY
+        rcall display_decimal
+        ldi r16, ','
+        M_DO_LCD_DATA r16
+        ldi r16, 'R'
+        cp FlightState,r16
+        breq print_accident_height
+    print_drone_height:
+        mov r16, DroneZ
+        rcall display_decimal
+        ldi r16, ')'
+        M_DO_LCD_DATA r16
+        ldi r16, 'C'
+        cp FlightState,r16
+        breq finish_print_status_bar
+        rjmp print_speed_dir
+    print_accident_height:
+        rcall get_tile_height
+        mov r16,r0
+        rcall display_decimal
+        ldi r16, ')'
+        M_DO_LCD_DATA r16
+        rjmp finish_print_status_bar
+    print_speed_dir:
+        mov r16, Spd
+        rcall display_decimal
+        ldi r16, '/'
+        M_DO_LCD_DATA r16
+        M_DO_LCD_DATA Direction
+    finish_print_status_bar:
+        pop r16
+        ret
 
 
 print_curr_row:
