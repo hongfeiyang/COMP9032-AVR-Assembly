@@ -30,6 +30,9 @@
 .equ MIN_SPEED      =   1
 .equ MAX_SPEED      =   9
 .equ VISIBILITY     =   1
+.equ INIT_DRONE_X   =   0
+.equ INIT_DRONE_Y   =   0
+.equ INIT_DRONE_Z   =   1
 .equ MAX_HEIGHT     =   100
 .def DroneX         =   r4
 .def DroneY         =   r5
@@ -85,10 +88,12 @@ RESET:
 
     clr AccidentX
     clr AccidentY
-    clr DroneX
-    clr DroneY
-    clr DroneZ
-    ldi r16, 1
+    
+    ldi r16, INIT_DRONE_X
+    mov DroneX, r16
+    ldi r16, INIT_DRONE_Y
+    mov DroneY, r16
+    ldi r16, INIT_DRONE_Z
     mov DroneZ, r16
     ldi r16, 'S'
     mov Direction, r16
@@ -322,22 +327,9 @@ end_inc_speed:
 ; should have 2 counters for each PB, but since the time we debounce is only 50 ms and it is
 ; unlikely for user to press these two buttons alternatively within 50ms, therefore this is
 ; enough, worst case scenario one button waits for 100ms before it is reenabled.
-main_loop:  ; display initial state and path
-    rcall print_curr_path
-    rcall print_status_bar
-accident_0: ; check for edge case that accident is (0,0)
-    ldi r20,0
-    cp AccidentX,r20
-    brne not_accident_0
-    cp AccidentY,r20
-    brne not_accident_0
-    ldi r20, 'R'
-    mov FlightState,r20
-not_accident_0:
-    clr r20
-main_listen:
+main_loop:
     push r16
-    in r16, EIMSK       ;changed to sbrs
+    in r16, EIMSK       
     sbrs r16, INT0      ; if INT0 is set, do nothing, otherwise we wait for 50ms and re-enables INT0
     rjmp enable_INT0
     sbrs r16, INT1      ; if INT1 is set, do nothing, otherwise we wait for 50ms and re-enables INT1
@@ -355,7 +347,7 @@ enable_INT1:
     rjmp end_main_loop
 end_main_loop:
     pop r16
-    rjmp main_listen
+    rjmp main_loop
 
 
 ; --------------------------------------------------------------------------------------------------------------- ;
@@ -455,7 +447,6 @@ is_hovering:
     rcall update_status_if_found        ; Added to check if accident found from vertical movement
     rjmp end_step_drone
 is_flying:
-    rcall update_drone_position
     rcall update_status_if_crashed
 
     ; If drone has crashed during this step, then we dont need to check if it has found the accident location
@@ -465,6 +456,14 @@ is_flying:
 
     ; Otherwise we proceed to check if the drone has found the accident location
     rcall update_status_if_found
+
+    ; If drone has found the accident location during this step, then we dont need to update its position
+    mov r16, FlightState
+    cpi r16, 'R'
+    breq end_step_drone
+
+    rcall update_drone_position
+
     rjmp end_step_drone
 
 end_step_drone:
