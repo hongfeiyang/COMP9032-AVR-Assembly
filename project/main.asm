@@ -443,8 +443,15 @@ is_returning:
     rjmp end_step_drone
 is_hovering:
     rcall update_drone_in_hovering_state
-    rcall update_status_if_crashed      ; Still need to check for crash on its way back
-    rcall update_status_if_found        ; Added to check if accident found from vertical movement
+    rcall update_status_if_crashed      
+    
+    ; If drone has crashed during this step, even if it has found the accident,
+    ; it does not live to tell the story :(, so no need to check if it has found the accident location
+    mov r16, FlightState
+    cpi r16, 'C'
+    breq end_step_drone
+
+    rcall update_status_if_found        
     rjmp end_step_drone
 is_flying:
     rcall update_status_if_crashed
