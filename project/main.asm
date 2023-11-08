@@ -30,6 +30,9 @@
 .equ MIN_SPEED      =   1
 .equ MAX_SPEED      =   9
 .equ VISIBILITY     =   1
+.equ INIT_DRONE_X   =   0
+.equ INIT_DRONE_Y   =   0
+.equ INIT_DRONE_Z   =   1
 .equ MAX_HEIGHT     =   100
 .def DroneX         =   r4
 .def DroneY         =   r5
@@ -71,7 +74,7 @@ map:    .db     1,  2,  3,  4,  5,  6,  7,  8,  9,  8,  7,  6,  5,  4,  3,  0   
         .db     4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  5   ; ROW 13
         .db     3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  4   ; ROW 14
         .db     2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  3   ; ROW 15
-
+;               0   1   2   3   4   5   6   7   8   9   10  11  12  13  14  15
 opening_line:   .db     "Acci loc: "
 
 RESET:
@@ -85,10 +88,12 @@ RESET:
 
     clr AccidentX
     clr AccidentY
-    clr DroneX
-    clr DroneY
-    clr DroneZ
-    ldi r16, 1
+    
+    ldi r16, INIT_DRONE_X
+    mov DroneX, r16
+    ldi r16, INIT_DRONE_Y
+    mov DroneY, r16
+    ldi r16, INIT_DRONE_Z
     mov DroneZ, r16
     ldi r16, 'S'
     mov Direction, r16
@@ -324,13 +329,13 @@ end_inc_speed:
 ; enough, worst case scenario one button waits for 100ms before it is reenabled.
 main_loop:
     push r16
-    in r16, EIMSK
-    sbis r16, INT0      ; if INT0 is set, do nothing, otherwise we wait for 50ms and re-enables INT0
+    in r16, EIMSK       
+    sbrs r16, INT0      ; if INT0 is set, do nothing, otherwise we wait for 50ms and re-enables INT0
     rjmp enable_INT0
-    sbis r16, INT1      ; if INT1 is set, do nothing, otherwise we wait for 50ms and re-enables INT1
+    sbrs r16, INT1      ; if INT1 is set, do nothing, otherwise we wait for 50ms and re-enables INT1
     rjmp enable_INT1
     rjmp end_main_loop
-enable_INTO:
+enable_INT0:
     rcall sleep_50ms    ; Otherwise we just pressed a Push Button, wait for 50 ms to reenable it
     in r16, EIMSK
     ori r16, (1<<INT0)
@@ -438,10 +443,17 @@ is_returning:
     rjmp end_step_drone
 is_hovering:
     rcall update_drone_in_hovering_state
-    rcall update_status_if_crashed      ; Still need to check for crash on its way back
+    rcall update_status_if_crashed      
+    
+    ; If drone has crashed during this step, even if it has found the accident,
+    ; it does not live to tell the story :(, so no need to check if it has found the accident location
+    mov r16, FlightState
+    cpi r16, 'C'
+    breq end_step_drone
+
+    rcall update_status_if_found        
     rjmp end_step_drone
 is_flying:
-    rcall update_drone_position
     rcall update_status_if_crashed
 
     ; If drone has crashed during this step, then we dont need to check if it has found the accident location
@@ -451,16 +463,23 @@ is_flying:
 
     ; Otherwise we proceed to check if the drone has found the accident location
     rcall update_status_if_found
-    rjmp end_step_drone
-end_step_drone:
 
+    ; If drone has found the accident location during this step, then we dont need to update its position
+    mov r16, FlightState
+    cpi r16, 'R'
+    breq end_step_drone
+
+    rcall update_drone_position
+
+    rjmp end_step_drone
+
+end_step_drone:
     ; At the end of the step function a new Frame (screen) should be drawn
     ; on LCD, therefore the LCD has a display refresh rate of 1 / 500ms = 2Hz (Sort of :P)
     ; M_CLEAR_LCD
     ; rcall lcd_wait_busy
     rcall print_curr_path
     rcall print_status_bar
-
     pop r16
     ret
 
@@ -628,12 +647,17 @@ end_update_drone_position:
     pop r16
     ret
 
-
+;changed crash and return screen
 print_curr_path:
     push r16
-
     M_DO_LCD_COMMAND 0x00 | (1<<7)
-
+    ;clear path if return or crash
+    ldi r16, 'R'
+    cp FlightState,r16
+    breq clear_path
+    ldi r16, 'C'
+    cp FlightState,r16
+    breq clear_path
     ldi r16, 'N'
     cp Direction, r16
     breq vertical
@@ -653,16 +677,21 @@ horizontal:
 vertical:
     rcall print_curr_col
     rjmp  end_print_curr_path
+clear_path:
+    M_CLEAR_LCD
 end_print_curr_path:
     pop r16
     ret
 
+;updated to avoid printing speed/direction on return or crash
+;updated to show accident location rather than drone location on accident found 
 print_status_bar:
     push r16
 
     M_DO_LCD_COMMAND 0x40 | (1<<7)
-
+print_flight_state:
     M_DO_LCD_DATA FlightState
+print_drone_coords:
     ldi r16, ' '
     M_DO_LCD_DATA r16
     ldi r16, '('
@@ -675,15 +704,32 @@ print_status_bar:
     rcall display_decimal
     ldi r16, ','
     M_DO_LCD_DATA r16
+    ldi r16, 'R'
+    cp FlightState,r16
+    breq print_accident_height
+print_drone_height:
     mov r16, DroneZ
     rcall display_decimal
     ldi r16, ')'
     M_DO_LCD_DATA r16
+    ldi r16, 'C'
+    cp FlightState,r16
+    breq finish_print_status_bar
+    rjmp print_speed_dir
+print_accident_height:
+    rcall get_tile_height
+    mov r16,r0
+    rcall display_decimal
+    ldi r16, ')'
+    M_DO_LCD_DATA r16
+    rjmp finish_print_status_bar
+print_speed_dir:
     mov r16, Spd
     rcall display_decimal
     ldi r16, '/'
     M_DO_LCD_DATA r16
     M_DO_LCD_DATA Direction
+finish_print_status_bar:
     pop r16
     ret
 
