@@ -680,52 +680,52 @@ end_print_curr_path:
 ;updated to avoid printing speed/direction on return or crash
 ;updated to show accident location rather than drone location on accident found 
 print_status_bar:
-        push r16
+    push r16
 
-        M_DO_LCD_COMMAND 0x40 | (1<<7)
-    print_flight_state:
-        M_DO_LCD_DATA FlightState
-    print_drone_coords:
-        ldi r16, ' '
-        M_DO_LCD_DATA r16
-        ldi r16, '('
-        M_DO_LCD_DATA r16
-        mov r16, DroneX
-        rcall display_decimal
-        ldi r16, ','
-        M_DO_LCD_DATA r16
-        mov r16, DroneY
-        rcall display_decimal
-        ldi r16, ','
-        M_DO_LCD_DATA r16
-        ldi r16, 'R'
-        cp FlightState,r16
-        breq print_accident_height
-    print_drone_height:
-        mov r16, DroneZ
-        rcall display_decimal
-        ldi r16, ')'
-        M_DO_LCD_DATA r16
-        ldi r16, 'C'
-        cp FlightState,r16
-        breq finish_print_status_bar
-        rjmp print_speed_dir
-    print_accident_height:
-        rcall get_tile_height
-        mov r16,r0
-        rcall display_decimal
-        ldi r16, ')'
-        M_DO_LCD_DATA r16
-        rjmp finish_print_status_bar
-    print_speed_dir:
-        mov r16, Spd
-        rcall display_decimal
-        ldi r16, '/'
-        M_DO_LCD_DATA r16
-        M_DO_LCD_DATA Direction
-    finish_print_status_bar:
-        pop r16
-        ret
+    M_DO_LCD_COMMAND 0x40 | (1<<7)
+print_flight_state:
+    M_DO_LCD_DATA FlightState
+print_drone_coords:
+    ldi r16, ' '
+    M_DO_LCD_DATA r16
+    ldi r16, '('
+    M_DO_LCD_DATA r16
+    mov r16, DroneX
+    rcall display_decimal
+    ldi r16, ','
+    M_DO_LCD_DATA r16
+    mov r16, DroneY
+    rcall display_decimal
+    ldi r16, ','
+    M_DO_LCD_DATA r16
+    ldi r16, 'R'
+    cp FlightState,r16
+    breq print_accident_height
+print_drone_height:
+    mov r16, DroneZ
+    rcall display_decimal
+    ldi r16, ')'
+    M_DO_LCD_DATA r16
+    ldi r16, 'C'
+    cp FlightState,r16
+    breq finish_print_status_bar
+    rjmp print_speed_dir
+print_accident_height:
+    rcall get_tile_height
+    mov r16,r0
+    rcall display_decimal
+    ldi r16, ')'
+    M_DO_LCD_DATA r16
+    rjmp finish_print_status_bar
+print_speed_dir:
+    mov r16, Spd
+    rcall display_decimal
+    ldi r16, '/'
+    M_DO_LCD_DATA r16
+    M_DO_LCD_DATA Direction
+finish_print_status_bar:
+    pop r16
+    ret
 
 
 print_curr_row:
