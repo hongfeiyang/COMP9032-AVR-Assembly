@@ -8,3 +8,12 @@
 
     pop r16
 .endmacro
+
+;to help compute and store the keypad input numbers that are multiple digits 
+.macro M_MULT_TEN
+    push r16
+    ldi r16, 10
+    mul @0, r16
+    mov @0, r0
+    pop r16
+.endmacro

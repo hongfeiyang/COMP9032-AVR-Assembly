@@ -6,26 +6,6 @@
 .include "lcd_macros.asm"
 .include "keypad_macros.asm"
 
-.macro Clear
-    push r16
-	ldi YL, low(@0)              ; load the memory address to Y
-	ldi YH, high(@0)
-	clr r16
-	st Y+, r16                ; clear the two bytes at @0 in SRAM
-	st Y, r16
-    pop r16
-.endmacro
-
-;to help compute and store the keypad input numbers that are multiple digits 
-.macro M_MULT_TEN
-    push r16
-    ldi r16, 10
-    mul @0, r16
-    mov @0, r0
-    pop r16
-.endmacro
-
-
 .equ MAP_SIZE       =   16
 .equ MIN_SPEED      =   1
 .equ MAX_SPEED      =   9
@@ -43,20 +23,19 @@
 .def AccidentX      =   r10
 .def AccidentY      =   r11
 
-.dseg
-.org 0x200
-    SecondCounter:  	.byte 2                     ; Two - byte counter for counting the number of seconds. Consider this as a clock that counts the number of seconds has elapsed.
-    TempCounter:    	.byte 2						; Two - byte counter for counting the number of intervals of 1024 us. Will reset to 0 after 1000 intervals.
 
 .cseg
+
 .org 0x0000
 	jmp RESET                   ; Reset interrupt vector
 .org INT0addr
     jmp EXT_INT0                ; INT0 interrupt vector
 .org INT1addr
     jmp EXT_INT1                ; INT1 interrupt vector 
-.org OVF0addr
-	jmp Timer0OVF               ; Timer0 overflow interrupt vector
+.org OC1Aaddr
+    jmp TIMER_1_COMPA_VECT               
+.org OC0Aaddr
+	jmp TIMER_0_COMPA_VECT               
 
 map:    .db     1,  2,  3,  4,  5,  6,  7,  8,  9,  8,  7,  6,  5,  4,  3,  0   ; ROW 0
         .db     2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  1   ; ROW 1
@@ -114,13 +93,45 @@ RESET:
     
     ; Start game, enable timer interrupt
 
-    ; Timer0 interrupt set up and initialization
-	ldi r16, 0b00000000
-	out TCCR0A, r16
-	ldi r16, 0b00000011
-	out TCCR0B, r16          	; Prescaler value=64, counting 1024 us
-	ldi r16, 1<<TOIE0
-	sts TIMSK0, r16           	; T / C0 interrupt enable
+    ; Timer 0 CTC A interrupt set up and initialization
+
+	ldi r16, (1<<WGM01)
+	out TCCR0A, r16                 ; Set Timer0 to CTC mode
+	ldi r16, (1<<CS02) | (1<<CS00)  ; Set the prescaler to 1024, now the new clock frequency is 16MHz/1024 = 15.625kHz
+	out TCCR0B, r16
+    ; one tick now is 1/15.625kHz = 64us
+    ; To get 16 ms, we need to have 16ms/64us = 250 ticks
+    ldi r16, 250                    
+    out OCR0A, r16                  ; Poll keypad every 16ms, instead of 1ms to reduce CPU stress
+
+	ldi r16, (1<<OCIE0A)
+	sts TIMSK0, r16           	    ; Enable Timer0 Compare A interrupt
+
+
+    ; Timer1 CTC A set up and initialization
+    
+    ; Set Timer 1 (16 bits) to CTC mode
+    ; Set the prescaler to 256, now the new clock frequency is 16MHz/256 = 62.5kHz
+    ; and each tick is 1/62.5kHz = 16us
+    ldi r16, (0<<WGM11) | (0<<WGM10)
+    sts TCCR1A, r16
+    ldi r16, (0<<WGM13) | (1<<WGM12) | (1<<CS12)
+    sts TCCR1B, r16
+
+    ; To get 500ms, we need to have 500/16us = 31250 ticks
+    ; Load OCR1AH and OCR1AL with 31250
+    ldi r16, high(31250)
+    sts OCR1AH, r16
+    ldi r16, low(31250)
+    sts OCR1AL, r16
+
+    ; Clear the timer counter
+    clr r16
+    sts TCNT1H, r16
+    sts TCNT1L, r16
+    
+    ldi r16, 1<<OCIE1A
+	sts TIMSK1, r16             ; Enable Timer 1 CTC Output Compare A interrupt
 
 
     ; INT0 and INT1 interrupt set up and initialization
@@ -205,66 +216,43 @@ end_set_up_accident_location:
 
 
 ; --------------------------------------------------------------------------------------------------------------- ;
-; ------------------------------------------------------- Timer0 Overflow Handler ------------------------------- ;
+; ----------------------------------- Timer0 Compare A Interrupt Handler ---------------------------------------- ;
 ; --------------------------------------------------------------------------------------------------------------- ;
-Timer0OVF:                      ; interrupt subroutine for Timer0
-	push r16
-    in r16, SREG
-	push r16                    ; Prologue starts.
-	push YH                     ; Save all conflict registers in the prologue.
-	push YL
-	push r25
-	push r24                    ; Prologue ends.
 
-	ldi YL, low(TempCounter)    ; Load the address of the temporary
-	ldi YH, high(TempCounter)   ; counter.
-	ld r24, Y+                  ; Load the value of the temporary counter.
-	ld r25, Y
-    adiw r25:r24, 1             ; Increase the temporary counter by one
+; TODO: Do deboucing for keyboard also, need around 400ms delay between each key press
+TIMER_0_COMPA_VECT:
+    push r16
+    in r16, SREG
+    push r16
 
     rcall scan_key_pad
     ldi r16, 0
     cp r0, r16
-    breq no_drone_command
+    breq no_drone_command           ; User hasn't inputted anything
     rcall process_drone_command
     rcall flash_three_times
-
 no_drone_command:
-    ; User hasn't input anything, drone continue to move according its inertia
+    pop r16
+    out SREG, r16
+    pop r16
+    reti
 
-	cpi r24, low(1000)          ; Check if (r25:r24)=500
-	brne NotSecond
-	cpi r25, high(1000)
-	brne NotSecond
+; --------------------------------------------------------------------------------------------------------------- ;
+; ----------------------------------- Timer1 Compare A Interrupt Handler ---------------------------------------- ;
+; --------------------------------------------------------------------------------------------------------------- ;
 
-	; Otherwise we have reached 500ms
-
+TIMER_1_COMPA_VECT:
+    push r16
+    in r16, SREG
+    push r16
+    
     rcall step_drone
-   
-	Clear TempCounter           ; Reset the temporary counter.
-	ldi YL, low(SecondCounter)  ; Load the address of the second
-	ldi YH, high(SecondCounter) ; counter.
-	ld r24, Y +                 ; Load the value of the second counter.
-	ld r25, Y
-    adiw r25:r24, 1             ; Increase the second counter by one.
 
-    ; out PORTC, r24              ; Display the second counter on the LED bar.
+    pop r16
+    out SREG, r16
+    pop r16
+    reti
 
-	st Y, r25                   ; Store the value of the second counter.
-	st - Y, r24
-	rjmp endif
-NotSecond:
-	st Y, r25                  	; Store the value of the temporary counter.
-	st - Y, r24
-endif:
-	pop r24                     ; Epilogue starts;
-	pop r25                     ; Restore all conflict registers from the stack.
-	pop YL
-	pop YH
-	pop r16
-	out SREG, r16
-	pop r16                    	; Epilogue ends.
-	reti
 
 ; --------------------------------------------------------------------------------------------------------------- ;
 ; ------------------------------------------------------- INT0 Handler ------------------------------------------ ;
@@ -320,33 +308,8 @@ end_inc_speed:
 ; ------------------------------------------------------- Main Loop --------------------------------------------- ;
 ; --------------------------------------------------------------------------------------------------------------- ;
 
-; Main loop has one job, which is to constant query the status of INT0 and INT1
-; If one of them is not set, this means we have just pushed a button, to debounce it
-; we wait for a certain period to renabled it.
-; This is a quick and dirty way to do debouncing with interrupts, strictly speaking we
-; should have 2 counters for each PB, but since the time we debounce is only 50 ms and it is
-; unlikely for user to press these two buttons alternatively within 50ms, therefore this is
-; enough, worst case scenario one button waits for 100ms before it is reenabled.
+
 main_loop:
-    push r16
-    in r16, EIMSK       
-    sbrs r16, INT0      ; if INT0 is set, do nothing, otherwise we wait for 50ms and re-enables INT0
-    rjmp enable_INT0
-    sbrs r16, INT1      ; if INT1 is set, do nothing, otherwise we wait for 50ms and re-enables INT1
-    rjmp enable_INT1
-    rjmp end_main_loop
-enable_INT0:
-    rcall sleep_50ms    ; Otherwise we just pressed a Push Button, wait for 50 ms to reenable it
-    in r16, EIMSK
-    ori r16, (1<<INT0)
-    rjmp end_main_loop
-enable_INT1:
-    rcall sleep_50ms
-    in r16, EIMSK
-    ori r16, (1<<INT1)
-    rjmp end_main_loop
-end_main_loop:
-    pop r16
     rjmp main_loop
 
 
@@ -485,7 +448,7 @@ end_step_drone:
 
 ; Change the FlightState register to 'R' if the drone has 'seen'
 ; the accident location, given the visibilty (1)
-; For now kogic is very simple, only when the drone is above the accident location can the drone see it
+; For now logic is very simple, only when the drone is above the accident location can the drone see it
 ; Drone does not have a camera that can look around :(
 update_status_if_found:
     push r16
@@ -512,7 +475,6 @@ end_check_found:
 
 ; Change the FlightState register to 'C' if the drone has crashed
 ; Otherwise this function has no effect
-; Called after update_drone_position
 update_status_if_crashed:
     push r16
     ; Check X
@@ -647,17 +609,17 @@ end_update_drone_position:
     pop r16
     ret
 
-;changed crash and return screen
+
 print_curr_path:
     push r16
     M_DO_LCD_COMMAND 0x00 | (1<<7)
-    ;clear path if return or crash
+    
     ldi r16, 'R'
     cp FlightState,r16
-    breq clear_path
+    breq clear_path         ; no path printed if returning
     ldi r16, 'C'
     cp FlightState,r16
-    breq clear_path
+    breq clear_path         ; no path printed if crashed
     ldi r16, 'N'
     cp Direction, r16
     breq vertical
@@ -683,8 +645,7 @@ end_print_curr_path:
     pop r16
     ret
 
-;updated to avoid printing speed/direction on return or crash
-;updated to show accident location rather than drone location on accident found 
+
 print_status_bar:
     push r16
 
@@ -706,7 +667,7 @@ print_drone_coords:
     M_DO_LCD_DATA r16
     ldi r16, 'R'
     cp FlightState,r16
-    breq print_accident_height
+    breq print_accident_height      ; show accident location rather than drone location on accident found 
 print_drone_height:
     mov r16, DroneZ
     rcall display_decimal
@@ -714,7 +675,7 @@ print_drone_height:
     M_DO_LCD_DATA r16
     ldi r16, 'C'
     cp FlightState,r16
-    breq finish_print_status_bar
+    breq finish_print_status_bar    ; avoid printing speed/direction on return or crash
     rjmp print_speed_dir
 print_accident_height:
     rcall get_tile_height
@@ -742,7 +703,7 @@ print_curr_row:
     push r18
 
     ldi r17, MAP_SIZE
-    mul DroneY, r17           ; rol * MAP_SIZE gives the offset of the start of this rol in the map array, result is in r1:r0
+    mul DroneY, r17             ; rol * MAP_SIZE gives the offset of the start of this rol in the map array, result is in r1:r0
 
     ldi ZH, high(map<<1)
     ldi ZL, low(map<<1)
@@ -784,7 +745,7 @@ print_curr_col:
     clr r19                         ; temp register just to hold a zero
     clr r18                         ; number of iterations
 
-    add ZL, DroneX                ; add column offset to Z pointer, so Z is pointing to the correct column
+    add ZL, DroneX                  ; add column offset to Z pointer, so Z is pointing to the correct column
     adc ZH, r18
 
 print_col_loop:
