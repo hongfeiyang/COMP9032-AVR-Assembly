@@ -37,6 +37,7 @@
 .org OC0Aaddr
 	jmp TIMER_0_COMPA_VECT               
 
+;               0   1   2   3   4   5   6   7   8   9   10  11  12  13  14  15
 map:    .db     1,  2,  3,  4,  5,  6,  7,  8,  9,  8,  7,  6,  5,  4,  3,  0   ; ROW 0
         .db     2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  1   ; ROW 1
         .db     3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  2   ; ROW 2
@@ -53,7 +54,7 @@ map:    .db     1,  2,  3,  4,  5,  6,  7,  8,  9,  8,  7,  6,  5,  4,  3,  0   
         .db     4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  4,  5   ; ROW 13
         .db     3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  3,  4   ; ROW 14
         .db     2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  3   ; ROW 15
-;               0   1   2   3   4   5   6   7   8   9   10  11  12  13  14  15
+
 opening_line:   .db     "Acci loc: "
 
 RESET:
@@ -86,7 +87,7 @@ RESET:
     M_LCD_INIT
     
     M_CLEAR_LCD
-    M_DO_LCD_COMMAND 0x40 | (1<<7)      ; Set DDRAM address to 0x40 (second line) 40 ~ 67 are the second line, 00 ~ 27 are the first line, DB7 must be 1
+    M_LCD_SET_CURSOR_TO_SECOND_LINE_START
 
     rcall print_opening_line
     rcall read_accident_location
@@ -144,75 +145,6 @@ RESET:
     sei
 
     jmp main_loop
-
-
-print_opening_line:
-    push ZH
-    push ZL
-    push r17
-    push r16
-
-    ldi ZH, high(opening_line<<1)
-    ldi ZL, low(opening_line<<1)
-
-    clr r17
-print_opening_line_loop:
-    lpm r16, Z+
-    M_DO_LCD_DATA r16
-    inc r17
-    cpi r17, 10 ; 10 characters to be printed
-    brne print_opening_line_loop
-    
-    pop r16
-    pop r17
-    pop ZL
-    pop ZH
-    ret
-
-
-
-read_accident_location:
-    push r18
-
-get_x_corrdinate:
-    rcall scan_key_pad
-    mov r18, r0
-    cpi r18, 0
-    breq get_x_corrdinate
-
-    rcall sleep_200ms
-    rcall sleep_200ms
-
-    M_DO_LCD_DATA r0
-    mov r18, r0
-    cpi r18, '*'
-    breq get_y_corrdinate
-    M_MULT_TEN AccidentX
-    subi r18, '0'
-    add AccidentX, r18
-    out PORTC, AccidentX
-    rjmp get_x_corrdinate
-get_y_corrdinate:
-    rcall scan_key_pad
-    mov r18, r0
-    cpi r18, 0
-    breq get_y_corrdinate
-
-    rcall sleep_200ms
-    rcall sleep_200ms
-    M_DO_LCD_DATA r0
-    mov r18, r0
-    cpi r18, '*'
-    breq end_set_up_accident_location
-    M_MULT_TEN AccidentY
-    subi r18, '0'
-    add AccidentY, r18
-    out PORTC, AccidentY
-    rjmp get_y_corrdinate
-
-end_set_up_accident_location:
-    pop r18
-    ret
 
 
 ; --------------------------------------------------------------------------------------------------------------- ;
@@ -316,6 +248,77 @@ main_loop:
 ; --------------------------------------------------------------------------------------------------------------- ;
 ; ------------------------------------------------------- Subroutines ------------------------------------------- ;
 ; --------------------------------------------------------------------------------------------------------------- ;
+
+; Print the "Acci Loc: " line at the start of the game
+print_opening_line:
+    push ZH
+    push ZL
+    push r17
+    push r16
+
+    ldi ZH, high(opening_line<<1)
+    ldi ZL, low(opening_line<<1)
+
+    clr r17
+print_opening_line_loop:
+    lpm r16, Z+
+    M_DO_LCD_DATA r16
+    inc r17
+    cpi r17, 10         ; 10 characters to be printed
+    brne print_opening_line_loop
+    
+    pop r16
+    pop r17
+    pop ZL
+    pop ZH
+    ret
+
+
+; Read the accident location from the user input, at the start of the game, input is in the format of X*Y* where X and Y are any valid two digit number, decimal
+; Leave the result at AccidentX and AccidentY
+read_accident_location:
+    push r18
+
+get_x_corrdinate:
+    rcall scan_key_pad
+    mov r18, r0
+    cpi r18, 0
+    breq get_x_corrdinate
+
+    rcall sleep_200ms
+    rcall sleep_200ms
+
+    M_DO_LCD_DATA r0
+    mov r18, r0
+    cpi r18, '*'
+    breq get_y_corrdinate
+    M_MULT_TEN AccidentX
+    subi r18, '0'
+    add AccidentX, r18
+    out PORTC, AccidentX
+    rjmp get_x_corrdinate
+get_y_corrdinate:
+    rcall scan_key_pad
+    mov r18, r0
+    cpi r18, 0
+    breq get_y_corrdinate
+
+    rcall sleep_200ms
+    rcall sleep_200ms
+    M_DO_LCD_DATA r0
+    mov r18, r0
+    cpi r18, '*'
+    breq end_set_up_accident_location
+    M_MULT_TEN AccidentY
+    subi r18, '0'
+    add AccidentY, r18
+    out PORTC, AccidentY
+    rjmp get_y_corrdinate
+
+end_set_up_accident_location:
+    pop r18
+    ret
+
 
 ; Process the drone command input by the user, which has already been left on r0 register
 process_drone_command:
@@ -504,7 +507,7 @@ end_check:
     pop r16
     ret
 
-
+; When Hover mode is enabled, drone can only fly up or down, this is the function that updates the drone's Z coordinate
 update_drone_in_hovering_state:
     push r16
 
@@ -515,6 +518,7 @@ update_drone_in_hovering_state:
     cpi r16, 'D'
     breq hover_down
 
+; And by default, we make it fly upwards
 hover_up:
     add DroneZ, Spd
     rjmp end_update_drone_in_hovering_state
@@ -527,9 +531,7 @@ end_update_drone_in_hovering_state:
     ret
 
 
-
-; TODO: need to check for negative speed... 
-; After update drone position
+; Move drone forward by one step in the current direction
 update_drone_position:
     push r16
     push r17    ; Store current height of tile
@@ -565,7 +567,7 @@ east_update:
     rjmp update_drone_z
 west_update:
     sub DroneX, Spd
-    rjmp update_drone_z   ; For consistency
+    rjmp update_drone_z  
 up_update:
     add DroneZ, Spd
     rjmp end_update_drone_position
@@ -609,10 +611,14 @@ end_update_drone_position:
     pop r16
     ret
 
-
+; Print the current path of the drone on the LCD, first line
+; current path is determined by the current direction of the drone
+; if drone is flying E-W, then print the current row
+; if drone is flying N-S, then print the current column
 print_curr_path:
     push r16
-    M_DO_LCD_COMMAND 0x00 | (1<<7)
+
+    M_LCD_SET_CURSOR_TO_FIRST_LINE_START
     
     ldi r16, 'R'
     cp FlightState,r16
@@ -635,21 +641,29 @@ print_curr_path:
     rjmp end_print_curr_path
 horizontal:
     rcall print_curr_row
+    M_LCD_SET_CURSOR_OFFSET DroneX      ; Move cursor to the current X
+    rcall sleep_200ms                   ; Sleep 200ms to make sure cursor can be seen on LCD
     rjmp end_print_curr_path
 vertical:
     rcall print_curr_col
-    rjmp  end_print_curr_path
+    M_LCD_SET_CURSOR_OFFSET DroneY      ; Move cursor to the current Y
+    rcall sleep_200ms                   ; Sleep 200ms to make sure cursor can be seen on LCD
+    rjmp end_print_curr_path
 clear_path:
     M_CLEAR_LCD
 end_print_curr_path:
     pop r16
     ret
 
-
+; Print the status bar on the LCD, second line
+; Status bar is in the format of:
+; FlightState (DroneX,DroneY,DroneZ)Speed/Direction
+; e.g. F (0,0,1)1/N
 print_status_bar:
     push r16
 
-    M_DO_LCD_COMMAND 0x40 | (1<<7)
+    M_LCD_SET_CURSOR_TO_SECOND_LINE_START
+
 print_flight_state:
     M_DO_LCD_DATA FlightState
 print_drone_coords:
@@ -694,7 +708,7 @@ finish_print_status_bar:
     pop r16
     ret
 
-
+; Prints the E-W row that the drone is currently on
 print_curr_row:
     push ZH
     push ZL
@@ -729,7 +743,7 @@ end_print_row_loop:
     ret
 
 
-
+; Prints the N-S column that the drone is currently on
 print_curr_col:
     push ZH
     push ZL
@@ -767,8 +781,6 @@ end_print_col_loop:
     pop ZL
     pop ZH
     ret 
-
-
 
 
 ; Get the hight of the current tile the drone is on / above
@@ -810,7 +822,7 @@ get_tile_height:
     pop ZH
     ret
 
-.include "sleep.asm"
+.include "sleep_functions.asm"
 .include "bcd.asm"
 .include "lcd_functions.asm"
 .include "keypad_functions.asm"
