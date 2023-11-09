@@ -849,6 +849,7 @@ get_tile_height:
     pop ZH
     ret
 
+.include "sleep.asm"
 .include "bcd.asm"
 .include "lcd_functions.asm"
 .include "keypad_functions.asm"
