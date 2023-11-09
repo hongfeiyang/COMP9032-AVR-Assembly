@@ -92,6 +92,8 @@ RESET:
     rcall print_opening_line
     rcall read_accident_location
     
+    rcall flash_three_times
+
     ; Start game, enable timer interrupt
 
     ; Timer 0 CTC A interrupt set up and initialization
@@ -408,7 +410,8 @@ has_crashed:
 is_returning:
     rjmp end_step_drone
 is_hovering:
-    rcall update_drone_in_hovering_state
+    ; I was told that when drone is in hover mode, it displays a speed,
+    ; but it does not move anymore, not even up or down, which is good!
     rcall update_status_if_crashed      
     
     ; If drone has crashed during this step, even if it has found the accident,
@@ -472,6 +475,7 @@ update_status_if_found:
 found:
     ldi r16, 'R'
     mov FlightState, r16
+    rcall flash_three_times ; Spec says we need to flash LED when accident is found
 end_check_found:
     pop r16
     ret
@@ -504,29 +508,6 @@ crashed:
     ldi r16, 'C'
     mov FlightState, r16
 end_check:
-    pop r16
-    ret
-
-; When Hover mode is enabled, drone can only fly up or down, this is the function that updates the drone's Z coordinate
-update_drone_in_hovering_state:
-    push r16
-
-    mov r16, Direction
-    
-    cpi r16, 'U'
-    breq hover_up
-    cpi r16, 'D'
-    breq hover_down
-
-; And by default, we make it fly upwards
-hover_up:
-    add DroneZ, Spd
-    rjmp end_update_drone_in_hovering_state
-hover_down:
-    sub DroneZ, Spd
-    rjmp end_update_drone_in_hovering_state
-
-end_update_drone_in_hovering_state:
     pop r16
     ret
 
@@ -628,23 +609,23 @@ print_curr_path:
     breq clear_path         ; no path printed if crashed
     ldi r16, 'N'
     cp Direction, r16
-    breq vertical
+    breq north_south
     ldi r16, 'S'
     cp Direction, r16
-    breq vertical
+    breq north_south
     ldi r16, 'E'
     cp Direction, r16
-    breq horizontal
+    breq east_west
     ldi r16, 'W'
     cp Direction, r16
-    breq horizontal
+    breq east_west
     rjmp end_print_curr_path
-horizontal:
+east_west:
     rcall print_curr_row
     M_LCD_SET_CURSOR_OFFSET DroneX      ; Move cursor to the current X
     rcall sleep_200ms                   ; Sleep 200ms to make sure cursor can be seen on LCD
     rjmp end_print_curr_path
-vertical:
+north_south:
     rcall print_curr_col
     M_LCD_SET_CURSOR_OFFSET DroneY      ; Move cursor to the current Y
     rcall sleep_200ms                   ; Sleep 200ms to make sure cursor can be seen on LCD
