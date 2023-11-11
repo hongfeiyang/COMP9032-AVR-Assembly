@@ -205,9 +205,6 @@ EXT_INT0:
     
 end_dec_speed:
 
-    in r16, EIMSK
-    ori r16, (0<<INT0)      ; Turn off this shit to prevent bouncing
-
     pop r16
     out SREG, r16
     pop r16
@@ -229,9 +226,6 @@ EXT_INT1:
     mov Spd, r16
 
 end_inc_speed:
-
-    in r16, EIMSK
-    ori r16, (0<<INT1)      ; Turn off this shit to prevent bouncing
 
     pop r16
     out SREG, r16
