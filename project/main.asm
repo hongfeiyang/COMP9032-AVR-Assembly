@@ -123,9 +123,9 @@ RESET:
 
     ; To get 500ms, we need to have 500/16us = 31250 ticks
     ; Load OCR1AH and OCR1AL with 31250
-    ldi r16, high(31250)
+    ldi r16, high(31250<<1)
     sts OCR1AH, r16
-    ldi r16, low(31250)
+    ldi r16, low(31250<<1)
     sts OCR1AL, r16
 
     ; Clear the timer counter
@@ -663,15 +663,21 @@ print_drone_coords:
     ldi r16, 'R'
     cp FlightState,r16
     breq print_accident_height      ; show accident location rather than drone location on accident found 
+    ldi r16, 'C'
+    cp FlightState,r16
+    breq print_crash_height
 print_drone_height:
     mov r16, DroneZ
     rcall display_decimal
     ldi r16, ')'
     M_DO_LCD_DATA r16
-    ldi r16, 'C'
-    cp FlightState,r16
-    breq finish_print_status_bar    ; avoid printing speed/direction on return or crash
-    rjmp print_speed_dir
+print_speed_dir:
+    mov r16, Spd
+    rcall display_decimal
+    ldi r16, '/'
+    M_DO_LCD_DATA r16
+    M_DO_LCD_DATA Direction
+    rjmp finish_print_status_bar
 print_accident_height:
     rcall get_tile_height
     mov r16,r0
@@ -679,12 +685,12 @@ print_accident_height:
     ldi r16, ')'
     M_DO_LCD_DATA r16
     rjmp finish_print_status_bar
-print_speed_dir:
-    mov r16, Spd
-    rcall display_decimal
-    ldi r16, '/'
+print_crash_height:
+    ldi r16, '-'
     M_DO_LCD_DATA r16
-    M_DO_LCD_DATA Direction
+    M_DO_LCD_DATA r16
+    ldi r16, ')'
+    M_DO_LCD_DATA r16
 finish_print_status_bar:
     pop r16
     ret
