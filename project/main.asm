@@ -180,7 +180,18 @@ TIMER_1_COMPA_VECT:
     in r16, SREG
     push r16
     
+    ; Load the 'speed' and excute the movement function
+    ; 'speed' amount of times to mimic the speed of the drone
+    clr r16
+start_drone_step:
     rcall step_drone
+    inc r16
+    cp r16, Spd
+    brne start_drone_step
+    
+    ; Refresh LCD
+    rcall print_curr_path
+    rcall print_status_bar
 
     pop r16
     out SREG, r16
@@ -441,8 +452,6 @@ end_step_drone:
     ; on LCD, therefore the LCD has a display refresh rate of 1 / 500ms = 2Hz (Sort of :P)
     ; M_CLEAR_LCD
     ; rcall lcd_wait_busy
-    rcall print_curr_path
-    rcall print_status_bar
     pop r16
     ret
 
@@ -532,30 +541,24 @@ update_drone_position:
     rjmp end_update_drone_position
 
 north_update:
-    sub DroneY, Spd
+    dec DroneY
     rjmp update_drone_z
 south_update:
-    add DroneY, Spd
+    inc DroneY
     rjmp update_drone_z
 east_update:
-    add DroneX, Spd
+    inc DroneX
     rjmp update_drone_z
 west_update:
-    sub DroneX, Spd
+    dec DroneX
     rjmp update_drone_z  
 up_update:
-    add DroneZ, Spd
+    inc DroneZ
     rjmp end_update_drone_position
 down_update:
-    sub DroneZ, Spd
+    dec DroneZ
     rjmp end_update_drone_position
 update_drone_z:
-
-    ; Only try to cope with mountain contour if speed is 1
-    ; which means next tile this drone will be on is an adjacent tile
-    mov r16, Spd
-    cpi r16, 1
-    brne end_update_drone_position
 
     rcall get_tile_height
     mov r18, r0
