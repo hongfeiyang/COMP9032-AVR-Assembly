@@ -23,45 +23,49 @@ related interfacing; designing software to interact with the hardware;
 and working collaboratively across different locations, different
 operating systems, and with a limited number of microprocessors.
 
+## Project timeline
+
 The timeline of our project was as follows:
 
-- Week 7 Wed (25/10): Used lab time to discuss the assignment
-  specification with lab tutors
-- Week 7 Fri (27/10): Had a group call with the team to brainstorm
-  assignment approach
-- Week 8 (30/10 - 05/11): Work on assigned tasks
-- Week 9 (06/11 - 12/11): Work on assigned tasks
-- Week 9 Thu (09/11): Group call to align on completed work and
-  communicate how code works
-- Week 9 Fri (10/11): Commence writing report
+- (25/10): Discussed the assignment specification and confirmed scope
+  with lab tutors
+- (27/10): Had a group call with the team to brainstorm assignment
+  approach and ideas
+- (30/10 - 12/11): Developed code
+  - (31/10): Added LCD helper functions and code to display map rows and
+    columns, drone attributes (speed, state, position)
+  - (03/11): Added timer interrupt for drone movement
+  - (03/11): Performed major code refactoring to split codebase across
+    multiple files
+  - (05/11): Added push button interrupts, speed handling, and crash
+    detection
+  - (06/11): Added visibility and accident detection, and hover logic
+  - (08/11): Performed bug fixes and edge case handling
+- (09/11): Had a group call to align on completed work and communicate
+  how the code works
+- (10/11): Commenced writing report
 
-Communication strategy:
+## Communication strategy
 
-- Used weekly labs to confirm scope and specifications
-- Communication with lab tutors to ensure that our team was following
-  the right path forward
-- Communication with team members over discord to ensure that work was
-  being completed correctly, on time, and without any double-ups
+A major challenge of group projects, especially software development
+projects, is communication. Our group maintained clear communication
+by:
 
-Collaboration strategy:
-
-- Git version control (branching, PRs, PR reviews)
-- Separated tasks into functions/macros such that each member could work
-  on tasks without conflict/double ups
-
-Difficulties:
-
-- Team was split between macOS and Windows
-  - Split between visual studio code and atmel microchip studio
-  - Knowledge share on how to develop in MacOS
-- Two boards shared amongst the team
-  - Two of the more technical members kept the boards so that they could
-    test their code in real time
-  - Used lab time to demonstrate board functioning
-
-Additional tools:
-
-- Makefiles to reduce friction for uploading code to boards
+- Using early weekly labs to confirm specifications and scope with lab
+  tutors
+- Using weekly labs to check in with lab tutors to ensure that our work
+  remained aligned with the project goal
+- Using Discord messaging to communicate with group members to ensure
+  that work was being completed correctly and on time, and to provide a
+  platform for group members to collaborate with each other (e.g. ask for
+  help/advice)
+- Using Discord calls to check in with group member work progress, and
+  have knowledge share sessions to ensure that all group members
+  understand the entire code
+- Using Git version control (branching, PRs, PR reviews) to facilitate
+  software development collaboration
+- Separating project tasks into functions and macros such that each
+  member can work on tasks without conflicts or double ups
 
 ## Contributions
 
