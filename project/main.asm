@@ -170,7 +170,7 @@ RESET:
     ldi r16, (0<<WGM43) | (1<<WGM42) | (1<<CS42)    ; Set the prescaler to 256 in control register B
     sts TCCR4B, r16
 
-    ; Load OCR3AH and OCR3AL with 18750 for 300ms delay
+    ; Load OCR4AH and OCR4AL with 18750 for 300ms delay
     ldi r16, high(18750)                            ; High byte of 18750
     sts OCR4AH, r16
     ldi r16, low(18750)                             ; Low byte of 18750
@@ -181,7 +181,7 @@ RESET:
     sts TCNT4H, r16
     sts TCNT4L, r16
 
-    ; Enable Timer 3 CTC interrupt
+    ; Enable Timer 4 CTC interrupt
     ldi r16, 1<<OCIE4A
     sts TIMSK4, r16 
 
