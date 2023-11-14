@@ -56,6 +56,7 @@ map:    .db     0,  0,  1,  2,  3,  4,  5,  6,  7,  6,  5,  4,  3,  2,  1,  0   
         .db     5,  1,  2,  2,  2,  2,  2,  2,  2,  2,  2,  1,  0,  1,  1,  1   ; ROW 15
 
 opening_line:   .db     "Acci loc: "
+invalid_accident_loc_line:      .db     "Invalid loc"
 
 RESET:
 	ldi r16, low(RAMEND)        ; Set stack pointer to RAMEND
@@ -85,14 +86,7 @@ RESET:
     M_KEYPAD_INIT
 
     M_LCD_INIT
-    
-    M_CLEAR_LCD
-    M_LCD_SET_CURSOR_TO_SECOND_LINE_START   ; Set cursor to second line to display "Acci loc" prompt
-
-    rcall print_opening_line                ; Print acci loc prompt
-    rcall read_accident_location            ; Take user input for accident location
-    
-    rcall flash_three_times
+    rcall set_accident
 
     ; Start game, enable timer interrupt
 
@@ -258,75 +252,137 @@ main_loop:
 ; ------------------------------------------------------- Subroutines ------------------------------------------- ;
 ; --------------------------------------------------------------------------------------------------------------- ;
 
-; Print the "Acci Loc: " line at the start of the game
-print_opening_line:
-    push ZH
-    push ZL
+
+set_accident: 
     push r17
-    push r16
 
-    ldi ZH, high(opening_line<<1)
-    ldi ZL, low(opening_line<<1)
-
-    clr r17
-; Loop to print "acci loc:" character by character 
-print_opening_line_loop:
-    lpm r16, Z+
-    M_DO_LCD_DATA r16
-    inc r17
-    cpi r17, 10         ; 10 characters to be printed
-    brne print_opening_line_loop
-    
-    pop r16
+    M_CLEAR_LCD
+    M_LCD_SET_CURSOR_TO_SECOND_LINE_START   ; Set cursor to second line to display "Acci loc" prompt
+    rcall print_opening_line                ; Print acci loc prompt
+    rcall read_accident_location            ; Take user input for accident location
+    rcall flash_three_times
+check_valid_accident:                       ; If either coordinate is greater than 16, invalid location 
+    ldi r17, 17
+    cp AccidentX, r17
+    brsh invalid_accident_loc
+    cp AccidentY, r17
+    brsh invalid_accident_loc
+    rjmp valid_accident_loc
+invalid_accident_loc:                       ; If invalid location, print invalid location line and loop back to start 
+    M_CLEAR_LCD
+    M_LCD_SET_CURSOR_TO_SECOND_LINE_START
+    rcall print_invalid_line
+    rcall sleep_200ms
+    rcall sleep_200ms
+    rcall sleep_200ms
+    rcall sleep_200ms
+    rjmp set_accident
+valid_accident_loc:
     pop r17
-    pop ZL
-    pop ZH
     ret
 
+; Print the "Acci Loc: " line at the start of the game
+print_opening_line:
+        push ZH
+        push ZL
+        push r17
+        push r16
+
+        ldi ZH, high(opening_line<<1)
+        ldi ZL, low(opening_line<<1)
+
+        clr r17
+    ; Loop to print "acci loc:" character by character 
+    print_opening_line_loop:
+        lpm r16, Z+
+        M_DO_LCD_DATA r16
+        inc r17
+        cpi r17, 10         ; 10 characters to be printed
+        brne print_opening_line_loop
+        
+        pop r16
+        pop r17
+        pop ZL
+        pop ZH
+        ret
+
+; Print the "Invalid loc " line if accident location invalid
+print_invalid_line:
+        push ZH
+        push ZL
+        push r17
+        push r16
+
+        ldi ZH, high(invalid_accident_loc_line<<1)
+        ldi ZL, low(invalid_accident_loc_line<<1)
+
+        clr r17
+    ; Loop to print "Invalid loc" character by character 
+    print_invalid_line_loop:
+        lpm r16, Z+
+        M_DO_LCD_DATA r16
+        inc r17
+        cpi r17, 11         ; 11 characters to be printed
+        brne print_invalid_line_loop
+        
+        pop r16
+        pop r17
+        pop ZL
+        pop ZH
+        ret
 
 ; Read the accident location from the user input, at the start of the game, input is in the format of X*Y* where X and Y are any valid two digit number, decimal
 ; Leave the result at AccidentX and AccidentY
 read_accident_location:
     push r18
-
+    clr AccidentX
+    clr AccidentY
 ; Read X (col) coord input and adds to AccidentX register until * detected
-get_x_corrdinate:
+get_x_coordinate:
     rcall scan_key_pad
     mov r18, r0
     cpi r18, 0
-    breq get_x_corrdinate
-
+    breq get_x_coordinate
     rcall sleep_200ms
     rcall sleep_200ms
 
-    M_DO_LCD_DATA r0
-    mov r18, r0
     cpi r18, '*'
-    breq get_y_corrdinate
+    breq X_asterisk
+    cpi r18, '0'
+    brlo get_x_coordinate
+    cpi r18, ':'
+    brsh get_x_coordinate
+    M_DO_LCD_DATA r18
     M_MULT_TEN AccidentX
     subi r18, '0'
     add AccidentX, r18
     out PORTC, AccidentX
-    rjmp get_x_corrdinate
+    rjmp get_x_coordinate
 ; Read Y (row) coord input and adds to AccidentX register until * detected
-get_y_corrdinate:
+X_asterisk:
+    M_DO_LCD_DATA r18
+get_y_coordinate:
     rcall scan_key_pad
     mov r18, r0
     cpi r18, 0
-    breq get_y_corrdinate
+    breq get_y_coordinate
+    rcall sleep_200ms
+    rcall sleep_200ms
 
-    rcall sleep_200ms
-    rcall sleep_200ms
-    M_DO_LCD_DATA r0
-    mov r18, r0
     cpi r18, '*'
-    breq end_set_up_accident_location
+    breq Y_asterisk
+    cpi r18, '0'
+    brlo get_y_coordinate
+    cpi r18, ':'
+    brsh get_y_coordinate
+    M_DO_LCD_DATA r18
     M_MULT_TEN AccidentY
     subi r18, '0'
     add AccidentY, r18
     out PORTC, AccidentY
-    rjmp get_y_corrdinate
-
+    rjmp get_y_coordinate
+Y_asterisk:
+    M_DO_LCD_DATA r18
 end_set_up_accident_location:
     pop r18
     ret
