@@ -27,9 +27,9 @@
 ; Set AC mannually and cursor will be set to the position pointed by AC
 .macro M_LCD_SET_CURSOR_OFFSET
 	push r16
-	mov r16, @0
-	ori r16, (1<<7)		; DB7 needs to be 1
-	rcall lcd_command
+	mov r16, @0			; This will be either X or Y position 
+	ori r16, (1<<7)		; DB7 needs to be 1 for cursor set mode
+	rcall lcd_command	; Execute cursor movement command 
 	rcall lcd_wait_busy
 	pop r16
 .endmacro
