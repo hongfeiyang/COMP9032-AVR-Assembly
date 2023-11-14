@@ -33,9 +33,14 @@
 .org INT1addr
     jmp EXT_INT1                ; INT1 interrupt vector 
 .org OC1Aaddr
-    jmp TIMER_1_COMPA_VECT      ; Timer 1 for movement               
+    jmp TIMER_1_COMPA_VECT      ; Timer 1 for movement       
 .org OC0Aaddr
-	jmp TIMER_0_COMPA_VECT      ; Timer 0 for inputs         
+	jmp TIMER_0_COMPA_VECT      ; Timer 0 for inputs   
+.org OC3Aaddr                   
+    jmp TIMER_3_COMPA_VECT      ; Timer 3 for speed up
+.org OC4Aaddr                   
+    jmp TIMER_4_COMPA_VECT      ; Timer 4 for speed down
+
 
 ;               0   1   2   3   4   5   6   7   8   9   10  11  12  13  14  15
 map:    .db     0,  0,  1,  2,  3,  4,  5,  6,  7,  6,  5,  4,  3,  2,  1,  0   ; ROW 0
@@ -95,8 +100,7 @@ RESET:
     rcall flash_three_times
 
     ; Start game, enable timer interrupt
-
-    ; Timer 0 (8-bits) CTC A interrupt set up and initialization
+    ; ------Timer 0 (8-bits) CTC A interrupt set up and initialization---------------------------------------------
 
 	ldi r16, (1<<WGM01)
 	out TCCR0A, r16                 ; Set Timer0 to CTC mode in control register A
@@ -111,7 +115,7 @@ RESET:
 	sts TIMSK0, r16           	    ; Enable Timer0 Compare A interrupt in mask register
 
 
-    ; Timer1 (16-bits) CTC A set up and initialization
+    ; ------Timer1 (16-bits) CTC A set up and initialization--------------------------------------------------------
     
     ldi r16, (0<<WGM11) | (0<<WGM10)                ; Set Timer 1 to CTC mode in control register A
     sts TCCR1A, r16
@@ -134,8 +138,55 @@ RESET:
     ldi r16, 1<<OCIE1A
 	sts TIMSK1, r16             ; Enable Timer 1 CTC Output Compare A interrupt in mask register
 
+    ;
+    ; ------ Timer3 (16-bits) CTC A set up and initialization -----------------------------------------------------------------
+    ; Set Timer 3 to CTC mode (OCR3A is used for comparison)
+    ldi r16, (0<<WGM31) | (0<<WGM30)                ; Configure Timer 3 for CTC mode in control register A
+    sts TCCR3A, r16
+    ldi r16, (0<<WGM33) | (1<<WGM32) | (1<<CS32)    ; Set the prescaler to 256 in control register B
+    sts TCCR3B, r16
 
-    ; INT0 (speed down) and INT1 (speed up) interrupt set up and initialization
+    ; Load OCR3AH and OCR3AL with 18750 for 300ms delay
+    ldi r16, high(18750)                            ; High byte of 18750
+    sts OCR3AH, r16
+    ldi r16, low(18750)                             ; Low byte of 18750
+    sts OCR3AL, r16
+
+    ; Clear the timer counter
+    clr r16
+    sts TCNT3H, r16
+    sts TCNT3L, r16
+
+    ; Enable Timer 3 CTC interrupt
+    ldi r16, 1<<OCIE3A
+    sts TIMSK3, r16  
+
+
+    ;
+    ; ------ Timer4 (16-bits) CTC A set up and initialization -----------------------------------------------------------------
+    ; Set Timer 4 to CTC mode (OCR3A is used for comparison)
+    ldi r16, (0<<WGM41) | (0<<WGM40)                ; Configure Timer 4 for CTC mode in control register A
+    sts TCCR4A, r16
+    ldi r16, (0<<WGM43) | (1<<WGM42) | (1<<CS42)    ; Set the prescaler to 256 in control register B
+    sts TCCR4B, r16
+
+    ; Load OCR3AH and OCR3AL with 18750 for 300ms delay
+    ldi r16, high(18750)                            ; High byte of 18750
+    sts OCR4AH, r16
+    ldi r16, low(18750)                             ; Low byte of 18750
+    sts OCR4AL, r16
+
+    ; Clear the timer counter
+    clr r16
+    sts TCNT4H, r16
+    sts TCNT4L, r16
+
+    ; Enable Timer 3 CTC interrupt
+    ldi r16, 1<<OCIE4A
+    sts TIMSK4, r16 
+
+
+    ; ------ INT0 (speed down) and INT1 (speed up) interrupt set up and initialization------------------------------
     ldi r16, (2<<ISC00) | (2<<ISC10)    ; Falling edge triggered interrupt
     sts EICRA, r16                      ; Configure INT0 and INT1 as falling edge triggered interrupt
     in r16, EIMSK
@@ -198,24 +249,89 @@ start_drone_step:
     pop r16
     reti
 
+; --------------------------------------------------------------------------------------------------------------- ;
+; ----------------------------------- Timer3 Compare A Interrupt Handler ---------------------------------------- ;
+; --------------------------------------------------------------------------------------------------------------- ;
+;
+TIMER_3_COMPA_VECT:
+    push r16
+    in r16, SREG
+    push r16
+    
+    mov r16, Spd
+    cpi r16, MAX_SPEED      ; do not increase speed if it is max already
+    breq end_speed_up
+    inc r16
+    mov Spd, r16
+
+end_speed_up:
+    lds r16, TCCR3B
+    andi r16, (0<<CS32)     ; Stop the timer (disable Clock Source)
+    sts TCCR3B, r16      
+
+    clr r16
+    sts TCNT3H, r16
+    sts TCNT3L, r16         ; Clear remaining value in the timer counter
+ 
+    in r16, EIMSK
+    ori r16, (1<<INT0)      ; Re-enable INT0 interrupt
+    out EIMSK, r16
+
+	pop r16
+	out SREG, r16
+	pop r16                    
+    reti
 
 ; --------------------------------------------------------------------------------------------------------------- ;
-; ------------------------------------------------------- INT0 Handler ------------------------------------------ ;
+; ----------------------------------- Timer4 Compare A Interrupt Handler ---------------------------------------- ;
 ; --------------------------------------------------------------------------------------------------------------- ;
-
-; Speed down button
-EXT_INT0:
+;
+TIMER_4_COMPA_VECT:
     push r16
     in r16, SREG
     push r16
 
     mov r16, Spd
-    cpi r16, MIN_SPEED      ; do not decrease speed if it is min already
-    breq end_dec_speed
+    cpi r16, MIN_SPEED      ; do not increase speed if it is max already
+    breq end_speed_down
     dec r16
     mov Spd, r16
-    
-end_dec_speed:
+
+end_speed_down:
+    lds r16, TCCR3B
+    andi r16, (0<<CS42)     ; Stop the timer (disable Clock Source)
+    sts TCCR4B, r16      
+
+    clr r16
+    sts TCNT4H, r16
+    sts TCNT4L, r16         ; Clear remaining value in the timer counter
+
+    in r16, EIMSK
+    ori r16, (1<<INT1)      ; Re-enable INT0 interrupt
+    out EIMSK, r16
+
+	pop r16
+	out SREG, r16
+	pop r16                    
+    reti
+
+; --------------------------------------------------------------------------------------------------------------- ;
+; ------------------------------------------------------- INT0 Handler ------------------------------------------ ;
+; --------------------------------------------------------------------------------------------------------------- ;
+
+; Speed up button
+EXT_INT0:
+    push r16
+    in r16, SREG
+    push r16
+
+    in r16, EIMSK
+    ori r16, (0<<INT0)      ; Disable INT0 interrupt
+    out EIMSK, r16              
+
+    lds r16, TCCR3B
+    ori r16, (1<<CS32)     ; Start the timer
+    sts TCCR3B, r16 
 
     pop r16
     out SREG, r16
@@ -226,19 +342,19 @@ end_dec_speed:
 ; ------------------------------------------------------- INT1 Handler ------------------------------------------ ;
 ; --------------------------------------------------------------------------------------------------------------- ;
 
-; Speed up button
+; Speed down button
 EXT_INT1:
     push r16
     in r16, SREG
     push r16
 
-    mov r16, Spd
-    cpi r16, MAX_SPEED      ; do not increase speed if it is max already
-    breq end_inc_speed
-    inc r16
-    mov Spd, r16
+    in r16, EIMSK
+    ori r16, (0<<INT1)      ; Disable INT0 interrupt
+    out EIMSK, r16              
 
-end_inc_speed:
+    lds r16, TCCR4B
+    ori r16, (1<<CS42)     ; Start the timer
+    sts TCCR4B, r16 
 
     pop r16
     out SREG, r16
