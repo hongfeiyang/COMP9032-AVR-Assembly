@@ -371,7 +371,7 @@ main_loop:
 
 set_accident: 
     push r17
-
+set_accident_start:
     M_CLEAR_LCD
     M_LCD_SET_CURSOR_TO_SECOND_LINE_START   ; Set cursor to second line to display "Acci loc" prompt
     rcall print_opening_line                ; Print acci loc prompt
@@ -392,7 +392,7 @@ invalid_accident_loc:                       ; If invalid location, print invalid
     rcall sleep_200ms
     rcall sleep_200ms
     rcall sleep_200ms
-    rjmp set_accident
+    rjmp set_accident_start
 valid_accident_loc:
     pop r17
     ret
