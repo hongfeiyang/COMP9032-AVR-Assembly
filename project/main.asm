@@ -368,7 +368,9 @@ main_loop:
 ; ------------------------------------------------------- Subroutines ------------------------------------------- ;
 ; --------------------------------------------------------------------------------------------------------------- ;
 
-
+; Wait for user to enter a valid location
+; A valid location is a location that is within the map size, for example
+; (0, 0) is valid, (0, 15) is valid, but (0, 16) is not valid if MAP_SIZE is 16
 set_accident: 
     push r17
 
@@ -377,8 +379,8 @@ set_accident:
     rcall print_opening_line                ; Print acci loc prompt
     rcall read_accident_location            ; Take user input for accident location
     rcall flash_three_times
-check_valid_accident:                       ; If either coordinate is greater than 16, invalid location 
-    ldi r17, 17
+check_valid_accident:                       ; If either coordinate is same or higher than MAP_SIZE, invalid location 
+    ldi r17, MAP_SIZE
     cp AccidentX, r17
     brsh invalid_accident_loc
     cp AccidentY, r17
@@ -467,7 +469,7 @@ get_x_coordinate:
     cpi r18, '0'
     brlo get_x_coordinate
     cpi r18, ':'
-    brsh get_x_coordinate
+    brsh get_x_coordinate   ; > ASCII '9'
     M_DO_LCD_DATA r18
     M_MULT_TEN AccidentX
     subi r18, '0'
@@ -490,7 +492,7 @@ get_y_coordinate:
     cpi r18, '0'
     brlo get_y_coordinate
     cpi r18, ':'
-    brsh get_y_coordinate
+    brsh get_y_coordinate   ; > ASCII '9'
     M_DO_LCD_DATA r18
     M_MULT_TEN AccidentY
     subi r18, '0'
