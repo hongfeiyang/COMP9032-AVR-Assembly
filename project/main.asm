@@ -137,7 +137,7 @@ RESET:
     ; Set Timer 3 to CTC mode (OCR3A is used for comparison)
     ldi r16, (0<<WGM31) | (0<<WGM30)                ; Configure Timer 3 for CTC mode in control register A
     sts TCCR3A, r16
-    ldi r16, (0<<WGM33) | (1<<WGM32) | (1<<CS32)    ; Set the prescaler to 256 in control register B
+    ldi r16, (0<<WGM33) | (1<<WGM32)    ; Set the prescaler to 256 in control register B
     sts TCCR3B, r16
 
     ; Load OCR3AH and OCR3AL with 18750 for 300ms delay
@@ -161,7 +161,7 @@ RESET:
     ; Set Timer 4 to CTC mode (OCR3A is used for comparison)
     ldi r16, (0<<WGM41) | (0<<WGM40)                ; Configure Timer 4 for CTC mode in control register A
     sts TCCR4A, r16
-    ldi r16, (0<<WGM43) | (1<<WGM42) | (1<<CS42)    ; Set the prescaler to 256 in control register B
+    ldi r16, (0<<WGM43) | (1<<WGM42)    ; Set the prescaler to 256 in control register B
     sts TCCR4B, r16
 
     ; Load OCR4AH and OCR4AL with 18750 for 300ms delay
@@ -260,16 +260,12 @@ TIMER_3_COMPA_VECT:
 
 end_speed_up:
     lds r16, TCCR3B
-    andi r16, (0<<CS32)     ; Stop the timer (disable Clock Source)
+    andi r16, ~(1<<CS32)     ; Stop the timer (disable Clock Source)
     sts TCCR3B, r16      
 
     clr r16
     sts TCNT3H, r16
     sts TCNT3L, r16         ; Clear remaining value in the timer counter
- 
-    in r16, EIMSK
-    ori r16, (1<<INT0)      ; Re-enable INT0 interrupt
-    out EIMSK, r16
 
 	pop r16
 	out SREG, r16
@@ -292,17 +288,13 @@ TIMER_4_COMPA_VECT:
     mov Spd, r16
 
 end_speed_down:
-    lds r16, TCCR3B
-    andi r16, (0<<CS42)     ; Stop the timer (disable Clock Source)
+    lds r16, TCCR4B
+    andi r16, ~(1<<CS42)     ; Stop the timer (disable Clock Source)
     sts TCCR4B, r16      
 
     clr r16
     sts TCNT4H, r16
     sts TCNT4L, r16         ; Clear remaining value in the timer counter
-
-    in r16, EIMSK
-    ori r16, (1<<INT1)      ; Re-enable INT0 interrupt
-    out EIMSK, r16
 
 	pop r16
 	out SREG, r16
@@ -318,10 +310,6 @@ EXT_INT0:
     push r16
     in r16, SREG
     push r16
-
-    in r16, EIMSK
-    ori r16, (0<<INT0)      ; Disable INT0 interrupt
-    out EIMSK, r16              
 
     lds r16, TCCR3B
     ori r16, (1<<CS32)     ; Start the timer
@@ -341,10 +329,6 @@ EXT_INT1:
     push r16
     in r16, SREG
     push r16
-
-    in r16, EIMSK
-    ori r16, (0<<INT1)      ; Disable INT0 interrupt
-    out EIMSK, r16              
 
     lds r16, TCCR4B
     ori r16, (1<<CS42)     ; Start the timer
