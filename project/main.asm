@@ -13,7 +13,7 @@
 .equ INIT_DRONE_X   =   0
 .equ INIT_DRONE_Y   =   0
 .equ INIT_DRONE_Z   =   1
-.equ MAX_HEIGHT     =   99
+.equ MAX_HEIGHT     =   100
 .def DroneX         =   r4      ; Drone coordinates X: col     
 .def DroneY         =   r5      ; Drone coordinates Y: row
 .def DroneZ         =   r6      ; Drone coordinates Z: height
