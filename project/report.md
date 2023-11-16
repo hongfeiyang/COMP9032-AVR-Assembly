@@ -1,4 +1,4 @@
-# Project development
+# COMP9032 Assignment
 
 ## Overview
 
@@ -78,8 +78,6 @@ Alan
 
 - Communication
 - Report
-
-# Project design
 
 ## Hardware components and interfacing design
 
