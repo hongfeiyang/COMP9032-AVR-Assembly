@@ -1,15 +1,3 @@
-# Instructions (to remove)
-
-The report is about six pages long in font size 11. It should provide:
-
-- (5 marks) the general description about the project development,
-  management, and the contribution of each group member, (5 marks)
-- (20 marks) the overview of the project design, which includes:
-  - hardware components used and related interfacing design (5 marks)
-  - software code structure and execution flow (5 marks), and
-  - how software and hardware interact with each other (10 marks).
-- (5 marks) concluding remarks about the project
-
 # Project development
 
 ## Overview
@@ -27,23 +15,25 @@ operating systems, and with a limited number of microprocessors.
 
 The timeline of our project was as follows:
 
-- (25/10): Discussed the assignment specification and confirmed scope
+- **(25/10)**: Discussed the assignment specification and confirmed scope
   with lab tutors
-- (27/10): Had a group call with the team to brainstorm assignment
+- **(27/10)**: Had a group call with the team to brainstorm assignment
   approach and ideas
-- (30/10 - 12/11): Developed code
-  - (31/10): Added LCD helper functions and code to display map rows and
-    columns, drone attributes (speed, state, position)
-  - (03/11): Added timer interrupt for drone movement
-  - (03/11): Performed major code refactoring to split codebase across
-    multiple files
-  - (05/11): Added push button interrupts, speed handling, and crash
+- **(30/10 - 12/11)**: Developed code
+  - **(31/10)**: Added LCD helper functions and code to display map rows
+    and columns, drone attributes (speed, state, position)
+  - **(03/11)**: Added timer interrupt for drone movement
+  - **(03/11)**: Performed major code refactoring to split codebase
+    across multiple files
+  - **(05/11)**: Added push button interrupts, speed handling, and crash
     detection
-  - (06/11): Added visibility and accident detection, and hover logic
-  - (08/11): Performed bug fixes and edge case handling
-- (09/11): Had a group call to align on completed work and communicate
-  how the code works
-- (10/11): Commenced writing report
+  - **(06/11)**: Added visibility and accident detection, and hover logic
+  - **(08/11)**: Performed bug fixes and edge case handling
+- **(09/11)**: Had a group call to align on completed work and
+  communicate how the code works
+- **(10/11)**: Commenced writing report
+- **(15/11)**: Demonstrated board and final simulation in lab time
+- **(16/11)**: Finished writing report
 
 ## Communication strategy
 
@@ -161,17 +151,72 @@ Interrupts:
   - Reset all pins and I/O devices and re-initialise starting values
     (e.g. drone position)
 - `EXT_INT0`
-  - Triggered by P0 button
+  - Triggered by the `PB0` button
   - Decreases drone speed
 - `EXT_INT1`
-  - Triggered by P1 button
+  - Triggered by the `PB1` button
   - Increases drone speed
-- `Timer0OVF`
-  - Constantly triggered
-  - Moves the game forward by "one step" by checking if any key has been
-    pressed and responding accordingly (e.g. change direction, flight
-    status)
+- `TIMER_0_COMPA_VECT`
+  - Timer interrupt that happens every 16ms
+  - Polls the keypad to check if any key has been pressed
+- `TIMER_1_COMPA_VECT`
+  - Timer interrupt that happens every 500ms
+  - Updates the drone state based on the values in the drone state
+    registers
+- `TIMER_3_COMPA_VECT`
+  - Timer interrupt that happens every 300ms
+  - Acts as a "debouncer" for when the `PB0` button is pressed
+- `TIMER_4_COMPA_VECT`
+  - Timer interrupt that happens every 300ms
+  - Acts as a "debouncer" for when the `PB1` button is pressed
 
 ## Software and hardware interaction
 
+The software and hardware interacts as per the following:
+
+1.  A map of the terrain is stored into program memory via software
+2.  Upon simulation start, the software triggers the LCD to display a
+    message stored in program memory, prompting the user to input an accident location. Subsequent inputs to the keypad are detected and
+    the software displays them onto the LCD
+3.  The software checks whether the inputted accident location is
+    valid, and if valid the software triggers the LED bar to flash three
+    times and the simulation begins. If not valid, the software triggers
+    an error message to be displayed onto the LCD, and the user is
+    prompted to input an accident location again
+4.  The software displays the drones current row/column onto the top row
+    of the LCD, as well as its position in that row/column. The software
+    displays the current state of the drone as well as its direction and
+    speed onto the bottom row of the LCD. All of this information is
+    retrieved from predefined drone state registers
+5.  The `TIMER_0_COMPA_VECT` timer interrupt polls the keypad every 16ms
+    to see if there is any user input
+6.  If there is user input, the software triggers the LED bar to flash
+    three times; and converts the inputs into instructions for the drone
+    (e.g. change direction or flight status) which are stored into
+    predefined drone state data registers
+7.  If a user presses the `PB0` push button the `EXT_INT0` interrupt
+    is triggered, which will trigger the `TIMER_3_COMPA_VECT` interrupt
+    to act as a "doebouncer", and then will decrement the value in the
+    drone speed data register
+8.  If a user presses the `PB1` push button the `EXT_INT1` interrupt
+    is triggered, which will trigger the `TIMER_4_COMPA_VECT` interrupt
+    to act as a "doebouncer", and then will increment the value in the
+    drone speed data register
+9.  The `TIMER_1_COMPA_VECT` timer interrupt updates the drone position,
+    and checks whether the drone has crashed or found the accident
+    location. The software then displays this onto the LCD
+10. If the drone has crashed, the simulation ends, and the software
+    displays this to the LCD. If the drone has found the accident, the
+    software triggers the LED bar to flash three times, the simulation ends, and the software displays this to the LCD
+
 # Concluding remarks
+
+We succeeded in completing the assignment specification, and in
+successfully demonstrating our working solution to the lab tutors.
+
+We learnt a number of skills in the project, including:
+
+- Writing AVR Assembly code
+- Using an Atmel ATMega2560 microprocessor board
+- Project management (including version control)
+- Teamwork and communication
