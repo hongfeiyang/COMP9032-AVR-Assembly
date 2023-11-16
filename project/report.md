@@ -119,6 +119,7 @@ File structure:
 - `keypad_macros.asm`:
   - Defines the `M_KEYPAD_INIT` macro for setting up the keypad to
     receive input
+  - Defines the `M_MULT_TEN` macro for correctly storing multi digit keypad inputs 
 - `lcd_defs.asm`:
   - Defines variables and values required for operating the LCD
 - `lcd_functions.asm`:
@@ -126,18 +127,22 @@ File structure:
     to the LCD
   - Defines the `lcd_data` function which accepts data to be displayed
     on the LCD
-  - Defines a number of delay functions to ensure the LCD operates
-    properly
+  - Defines the `lcd_wait_busy` function which ensures correct timing and independent execution of each operation
 - `lcd_macros.asm`:
   - Defines the `M_DO_LCD_COMMAND` macro which uses the `lcd_command`
     function to send a command to the LCD
   - Defines the `M_DO_LCD_DATA` macro which uses the `lcd_data` function
     to display data on the LCD
   - Defines the `M_CLEAR_LCD` macro which clears the LCD
+  - Defines the `M_LCD_SET_CURSOR_OFFSET` macro which sets the cursor to current drone position on the path
+  - Defines the `M_LCD_SET_CURSOR_TO_SECOND_LINE_START` macro which sets the cursor to the start of the second line on the LCD
+  - Defines the `M_LCD_SET_CURSOR_TO_FIRST_LINE_START` macro which sets the cursor to the start of the first line on the LCD
   - Defines the `M_LCD_INIT` macro which initialises the LCD
 - `led_bar_functions.asm`
   - Defines the `flash_three_times` function which causes the lights on
     the LED bar to flash three times successively
+- `sleep_functions.asm`
+  - Defines various functions to add delays at various lengths
 - `main.asm`
   - Uses all of the aforementioned files to execute the main body of
     code to satisfy the assessment criteria
@@ -150,22 +155,26 @@ Interrupts:
     (e.g. drone position)
 - `EXT_INT0`
   - Triggered by the `PB0` button
-  - Decreases drone speed
+  - Decreases drone speed by activating `EXT_INT0`
 - `EXT_INT1`
   - Triggered by the `PB1` button
-  - Increases drone speed
+  - Increases drone speed by activating `EXT_INT1`
 - `TIMER_0_COMPA_VECT`
   - Timer interrupt that happens every 16ms
   - Polls the keypad to check if any key has been pressed
+  - On valid input, processes user input and updates drone state accordingly 
 - `TIMER_1_COMPA_VECT`
-  - Timer interrupt that happens every 500ms
-  - Updates the drone state based on the values in the drone state
+  - Timer interrupt that happens every 1000ms
+  - Movement handler which updates the drone position based on the values in the drone state
     registers
+  - Updates LCD based on drone state
 - `TIMER_3_COMPA_VECT`
-  - Timer interrupt that happens every 300ms
+  - Timer interrupt activated by `EXT_INT0`
+  - Timer triggered after 300ms and decreases speed
   - Acts as a "debouncer" for when the `PB0` button is pressed
 - `TIMER_4_COMPA_VECT`
-  - Timer interrupt that happens every 300ms
+  - Timer interrupt activated by `EXT_INT1`
+  - Timer triggered after 300ms and increases speed
   - Acts as a "debouncer" for when the `PB1` button is pressed
 
 ## Software and hardware interaction
@@ -175,7 +184,7 @@ The software and hardware interacts as per the following:
 1.  A map of the terrain is stored into program memory via software
 2.  Upon simulation start, the software triggers the LCD to display a
     message stored in program memory, prompting the user to input an accident location. Subsequent inputs to the keypad are detected and
-    the software displays them onto the LCD
+    the software displays them onto the LCD.
 3.  The software checks whether the inputted accident location is
     valid, and if valid the software triggers the LED bar to flash three
     times and the simulation begins. If not valid, the software triggers
@@ -198,14 +207,10 @@ The software and hardware interacts as per the following:
     drone speed data register
 8.  If a user presses the `PB1` push button the `EXT_INT1` interrupt
     is triggered, which will trigger the `TIMER_4_COMPA_VECT` interrupt
-    to act as a "doebouncer", and then will increment the value in the
+    to act as a "debouncer", and then will increment the value in the
     drone speed data register
-9.  The `TIMER_1_COMPA_VECT` timer interrupt updates the drone position,
-    and checks whether the drone has crashed or found the accident
-    location. The software then displays this onto the LCD
-10. If the drone has crashed, the simulation ends, and the software
-    displays this to the LCD. If the drone has found the accident, the
-    software triggers the LED bar to flash three times, the simulation ends, and the software displays this to the LCD
+9.  The `TIMER_1_COMPA_VECT` timer interrupt handles drone movement. It processes a number of drone steps based on the drone's current speed. If the drone is flying, it will move the drone to the next tile along the path and automatically makes small adjustments to drone height according to the terrain.  Each drone step will also check whether the drone has crashed or found the accident in both hover mode, and in flight mode after the movement step has been processed. Finding the accident is based on the drone's vertical visibility which is set as a variable. Once the drone steps have been processed, the LCD is updated accordingly
+10. If the drone crashes or finds the accident, the simulation ends and it will be displayed on the LCD. If the drone finds the accident, the LED bar will also flash 3 times. 
 
 # Concluding remarks
 

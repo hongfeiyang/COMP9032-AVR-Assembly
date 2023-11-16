@@ -15,10 +15,6 @@
 	pop r16
 .endmacro
 
-.macro M_LCD_GO_HOME
-	M_DO_LCD_COMMAND 0b00000010 	; return home
-.endmacro
-
 .macro M_CLEAR_LCD
 	M_DO_LCD_COMMAND 0b00000001 	; clear display
 	M_LCD_GO_HOME
