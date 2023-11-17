@@ -62,22 +62,32 @@ by:
 Hongfei
 
 - Git setup
-- Software expert
+- Code modularisation
+- Timer interrupt setup
+- Movement logic
+- Crash/detecting accident logic
 
 Luke
 
-- Project management
-- Hardware expert
+- Code skeleton
+- LCD setup
+- Display logic
+- Terrain setup
 
 Tina
 
 - Code reviewer
 - Software and hardware support
+- External interrupt setup
+- Speed modification logic
+- LED logic
 
 Alan
 
-- Communication
-- Report
+- Project management
+- Keypad setup
+- Accident location setup and input validation
+- Input handling and logic
 
 ## Hardware components and interfacing design
 
@@ -155,10 +165,10 @@ Interrupts:
     (e.g. drone position)
 - `EXT_INT0`
   - Triggered by the `PB0` button
-  - Decreases drone speed by activating `EXT_INT0`
+  - Decreases drone speed by activating `TIMER_3_COMPA_VECT`
 - `EXT_INT1`
   - Triggered by the `PB1` button
-  - Increases drone speed by activating `EXT_INT1`
+  - Increases drone speed by activating `TIMER_4_COMPA_VECT`
 - `TIMER_0_COMPA_VECT`
   - Timer interrupt that happens every 16ms
   - Polls the keypad to check if any key has been pressed
@@ -170,11 +180,11 @@ Interrupts:
   - Updates LCD based on drone state
 - `TIMER_3_COMPA_VECT`
   - Timer interrupt activated by `EXT_INT0`
-  - Timer triggered after 300ms and decreases speed
+  - Timer stops after 300ms and decreases speed
   - Acts as a "debouncer" for when the `PB0` button is pressed
 - `TIMER_4_COMPA_VECT`
   - Timer interrupt activated by `EXT_INT1`
-  - Timer triggered after 300ms and increases speed
+  - Timer stops after 300ms and increases speed
   - Acts as a "debouncer" for when the `PB1` button is pressed
 
 ## Software and hardware interaction
