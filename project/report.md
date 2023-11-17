@@ -91,7 +91,7 @@ Alan
 
 ## Hardware components and interfacing design
 
-AVR ATmega2560 Microprocessor.
+AVR ATmega2560 Microprocessor:
 
 | Hardware Component | Direction | AVR Port (Pins)  |
 | ------------------ | --------- | ---------------- |
@@ -102,9 +102,15 @@ AVR ATmega2560 Microprocessor.
 | LCD                | Output    | Port F (PF0-PF7) |
 | LED                | Output    | Port C (PC0-PC7) |
 
-Insert picture?
+Componenets and interfaces:
+
+![Alt text](components.png)
 
 ## Software code structure and execution flow
+
+Execution flow:
+
+![Alt text](execution_flow.png)
 
 General design choices:
 
@@ -186,6 +192,11 @@ Interrupts:
   - Timer interrupt activated by `EXT_INT1`
   - Timer stops after 300ms and increases speed
   - Acts as a "debouncer" for when the `PB1` button is pressed
+
+Interrupt logic:
+
+<img src="reset.png" alt="Image 1" style="width: 40%"/> <img src="timer34.png" alt="Image 2" style="width: 45%;"/>
+<img src="timer0.png" alt="Image 1" style="width: 40%;"/> <img src="timer1.png" alt="Image 2" style="width: 50%;"/>
 
 ## Software and hardware interaction
 
