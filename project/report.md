@@ -104,13 +104,13 @@ AVR ATmega2560 Microprocessor:
 
 Componenets and interfaces:
 
-![Alt text](components.png)
+<img src="components.png" alt="Components" style="width: 95%"/>
 
 ## Software code structure and execution flow
 
 Execution flow:
 
-![Alt text](execution_flow.png)
+![Alt Exe flow](execution_flow.png)
 
 General design choices:
 
@@ -195,8 +195,8 @@ Interrupts:
 
 Interrupt logic:
 
-<img src="reset.png" alt="Image 1" style="width: 40%"/> <img src="timer34.png" alt="Image 2" style="width: 45%;"/>
-<img src="timer0.png" alt="Image 1" style="width: 40%;"/> <img src="timer1.png" alt="Image 2" style="width: 50%;"/>
+<img src="reset.png" alt="Reset" style="width: 40%"/> <img src="timer34.png" alt="Image 2" style="width: 45%;"/>
+<img src="timer0.png" alt="Timer0" style="width: 40%;"/> <img src="timer1.png" alt="Image 2" style="width: 50%;"/>
 
 ## Software and hardware interaction
 
